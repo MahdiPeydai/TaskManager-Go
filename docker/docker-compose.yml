@@ -1,0 +1,40 @@
+services:
+  ####################### POSTGRES #######################
+  postgres:
+    image: postgres:17.10
+    container_name: graph-taskmanager-postgres
+    environment:
+      POSTGRES_USER: "${POSTGRES_USER:?error}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?error}"
+      POSTGRES_DB: "${POSTGRES_DB:?error}"
+    volumes:
+      - postgres:/var/lib/postgresql/data
+    networks:
+      - graph-taskmanager-network
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+
+  ####################### REDIS #######################
+  redis:
+    image: redis:8.6.3-alpine
+    container_name: graph-taskmanager-redis
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:?error}"]
+    volumes:
+      - redis:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - graph-taskmanager-network
+    restart: unless-stopped
+
+####################### VOLUME AND NETWORKS #######################
+volumes:
+  postgres:
+    name: graph-taskmanager-postgres-data
+  redis:
+    name: graph-taskmanager-redis-data
+
+networks:
+  graph-taskmanager-network:
+    driver: bridge

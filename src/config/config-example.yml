@@ -1,0 +1,21 @@
+Postgres:
+  host: localhost
+  port: 6432
+  username: postgres
+  password: admin
+  dbName: car_sale_db
+  sslMode: disable
+  maxIdleConnections: 5
+  maxOpenConnections: 10
+  connectionMaxLifetime: 5
+redis:
+  host: localhost
+  port: 5379
+  password:
+  database: 0
+  dialTimeout: 5
+  readTimeout: 5
+  writeTimeout: 5
+  poolSize: 10
+  poolTimeout: 15
+  idleCheckFrequency: 500

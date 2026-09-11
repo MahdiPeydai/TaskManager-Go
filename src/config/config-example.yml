@@ -1,8 +1,10 @@
+Server:
+  internalPort: 5000
 Postgres:
   host: localhost
   port: 6432
   username: postgres
-  password: admin
+  password:
   dbName: car_sale_db
   sslMode: disable
   maxIdleConnections: 5

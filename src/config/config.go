@@ -12,9 +12,14 @@ import (
 )
 
 type Config struct {
+	Server   ServerConfig
 	Redis    RedisConfig
 	Postgres PostgresConfig
 	Logger   LoggerConfig
+}
+
+type ServerConfig struct {
+	InternalPort int
 }
 
 type RedisConfig struct {

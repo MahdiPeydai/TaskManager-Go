@@ -1,0 +1,7 @@
+# Ignore all .yml and .yaml files in this directory
+*.yml
+*.yaml
+
+# NOT ignore example files
+!config-example.yml
+!config-example.yaml

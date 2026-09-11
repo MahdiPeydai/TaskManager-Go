@@ -19,3 +19,8 @@ redis:
   poolSize: 10
   poolTimeout: 15
   idleCheckFrequency: 500
+logger:
+  appName: graph_taskmanager
+  filePath: ../logs/
+  level: debug
+  loggerName: zap

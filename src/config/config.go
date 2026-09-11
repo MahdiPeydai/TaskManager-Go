@@ -14,6 +14,7 @@ import (
 type Config struct {
 	Redis    RedisConfig
 	Postgres PostgresConfig
+	Logger   LoggerConfig
 }
 
 type RedisConfig struct {
@@ -40,6 +41,13 @@ type PostgresConfig struct {
 	MaxIdleConnections    int
 	MaxOpenConnections    int
 	ConnectionMaxLifetime time.Duration
+}
+
+type LoggerConfig struct {
+	AppName    string
+	FilePath   string
+	Level      string
+	LoggerName string
 }
 
 var (

@@ -50,6 +50,9 @@ func registerRoutes(g *gin.Engine, cfg *config.Config) {
 
 		usersRouterGroup := v1Group.Group("/users")
 		routers.UsersRouter(usersRouterGroup, cfg)
+
+		tasksRouterGroup := v1Group.Group("/tasks")
+		routers.TasksRouter(tasksRouterGroup, cfg)
 	}
 
 }

@@ -33,6 +33,9 @@ func createTables(db *gorm.DB) {
 	tables = addNewTable(db, models.Role{}, tables)
 	tables = addNewTable(db, models.UserRole{}, tables)
 
+	// Task
+	tables = addNewTable(db, models.Task{}, tables)
+
 	err := db.AutoMigrate(tables...)
 	if err != nil {
 		extras := map[logging.ExtraKey]interface{}{logging.ErrorMessage: err.Error()}
@@ -108,6 +111,7 @@ func DownInit() error {
 
 func dropTables(db *gorm.DB) (err error) {
 	tables := []interface{}{
+		models.Task{},
 		models.UserRole{},
 		models.User{},
 		models.Role{},

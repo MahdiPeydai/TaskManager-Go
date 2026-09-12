@@ -17,7 +17,6 @@ func NewHealthHandler() *HealthHandler {
 // Tags health
 // Produce Json
 //
-//	@Security	AuthBearer
 //	@Success	200	{object}	helpers.BaseHTTPResponse
 //	@Router		/v1/health [GET]
 func (h *HealthHandler) Health(c *gin.Context) {

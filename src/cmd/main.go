@@ -3,6 +3,7 @@ package main
 import (
 	"github.com/mahdipeydai/taskmanager-go/api"
 	"github.com/mahdipeydai/taskmanager-go/config"
+	"github.com/mahdipeydai/taskmanager-go/data/cache"
 	"github.com/mahdipeydai/taskmanager-go/data/db"
 	migration "github.com/mahdipeydai/taskmanager-go/data/db/migration"
 	"github.com/mahdipeydai/taskmanager-go/pkg/logging"
@@ -28,6 +29,12 @@ func main() {
 	}
 	defer db.CloseDb()
 	migration.UpInit()
+
+	err = cache.InitRedis(cfg)
+	if err != nil {
+		logger.Fatal(logging.Redis, logging.StartUp, err.Error(), nil)
+	}
+	defer cache.CloseRedis(cfg)
 
 	logger.Info(logging.Internal, logging.StartUp, "Setting up GIN server", nil)
 	api.InitServer(cfg)

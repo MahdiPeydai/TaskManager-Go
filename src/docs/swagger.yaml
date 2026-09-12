@@ -1,4 +1,21 @@
 definitions:
+  dto.CreateTaskRequest:
+    properties:
+      assignee_id:
+        type: integer
+      description:
+        type: string
+      status:
+        $ref: '#/definitions/models.TaskStatus'
+      title:
+        maxLength: 255
+        minLength: 1
+        type: string
+    required:
+    - description
+    - status
+    - title
+    type: object
   dto.LoginByUsernameRequest:
     properties:
       password:
@@ -41,6 +58,19 @@ definitions:
     - password
     - username
     type: object
+  dto.UpdateTaskRequest:
+    properties:
+      assignee_id:
+        type: integer
+      description:
+        type: string
+      status:
+        $ref: '#/definitions/models.TaskStatus'
+      title:
+        maxLength: 255
+        minLength: 1
+        type: string
+    type: object
   helpers.BaseHTTPResponse:
     properties:
       error: {}
@@ -62,6 +92,16 @@ definitions:
     x-enum-varnames:
     - Success
     - CustomRecovery
+  models.TaskStatus:
+    enum:
+    - pending
+    - in_progress
+    - completed
+    type: string
+    x-enum-varnames:
+    - TaskStatusPending
+    - TaskStatusInProgress
+    - TaskStatusCompleted
   validators.ValidationError:
     properties:
       message:
@@ -89,6 +129,186 @@ paths:
             $ref: '#/definitions/helpers.BaseHTTPResponse'
       security:
       - AuthBearer: []
+  /v1/tasks:
+    get:
+      description: Get paginated tasks with optional status and assignee filters.
+      parameters:
+      - description: Page number
+        in: query
+        name: page
+        type: integer
+      - description: Number of items per page
+        in: query
+        name: page_size
+        type: integer
+      - description: Task status
+        in: query
+        name: status
+        type: string
+      - description: Assignee ID
+        in: query
+        name: assignee_id
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/helpers.BaseHTTPResponse'
+        "400":
+          description: Failed
+          schema:
+            $ref: '#/definitions/helpers.BaseHTTPResponse'
+        "500":
+          description: Failed
+          schema:
+            $ref: '#/definitions/helpers.BaseHTTPResponse'
+      security:
+      - AuthBearer: []
+      summary: Get Tasks
+      tags:
+      - Tasks
+    post:
+      consumes:
+      - application/json
+      description: Create a new task.
+      parameters:
+      - description: Create task
+        in: body
+        name: Request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CreateTaskRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Success
+          schema:
+            $ref: '#/definitions/helpers.BaseHTTPResponse'
+        "400":
+          description: Failed
+          schema:
+            $ref: '#/definitions/helpers.BaseHTTPResponse'
+        "404":
+          description: Failed
+          schema:
+            $ref: '#/definitions/helpers.BaseHTTPResponse'
+        "500":
+          description: Failed
+          schema:
+            $ref: '#/definitions/helpers.BaseHTTPResponse'
+      security:
+      - AuthBearer: []
+      summary: Create Task
+      tags:
+      - Tasks
+  /v1/tasks/{id}:
+    delete:
+      description: Soft delete a task.
+      parameters:
+      - description: Task ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/helpers.BaseHTTPResponse'
+        "400":
+          description: Failed
+          schema:
+            $ref: '#/definitions/helpers.BaseHTTPResponse'
+        "404":
+          description: Failed
+          schema:
+            $ref: '#/definitions/helpers.BaseHTTPResponse'
+        "500":
+          description: Failed
+          schema:
+            $ref: '#/definitions/helpers.BaseHTTPResponse'
+      security:
+      - AuthBearer: []
+      summary: Delete Task
+      tags:
+      - Tasks
+    get:
+      description: Get a task by ID.
+      parameters:
+      - description: Task ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/helpers.BaseHTTPResponse'
+        "400":
+          description: Failed
+          schema:
+            $ref: '#/definitions/helpers.BaseHTTPResponse'
+        "404":
+          description: Failed
+          schema:
+            $ref: '#/definitions/helpers.BaseHTTPResponse'
+        "500":
+          description: Failed
+          schema:
+            $ref: '#/definitions/helpers.BaseHTTPResponse'
+      security:
+      - AuthBearer: []
+      summary: Get Task
+      tags:
+      - Tasks
+    put:
+      consumes:
+      - application/json
+      description: Update an existing task.
+      parameters:
+      - description: Task ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Update task
+        in: body
+        name: Request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.UpdateTaskRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/helpers.BaseHTTPResponse'
+        "400":
+          description: Failed
+          schema:
+            $ref: '#/definitions/helpers.BaseHTTPResponse'
+        "404":
+          description: Failed
+          schema:
+            $ref: '#/definitions/helpers.BaseHTTPResponse'
+        "500":
+          description: Failed
+          schema:
+            $ref: '#/definitions/helpers.BaseHTTPResponse'
+      security:
+      - AuthBearer: []
+      summary: Update Task
+      tags:
+      - Tasks
   /v1/users/login:
     post:
       consumes:

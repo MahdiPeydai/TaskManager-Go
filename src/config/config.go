@@ -16,6 +16,9 @@ type Config struct {
 	Redis    RedisConfig
 	Postgres PostgresConfig
 	Logger   LoggerConfig
+	Admin    AdminConfig
+	Jwt      JwtConfig
+	Password PasswordConfig
 }
 
 type ServerConfig struct {
@@ -56,6 +59,26 @@ type LoggerConfig struct {
 	FilePath   string
 	Level      string
 	LoggerName string
+}
+
+type AdminConfig struct {
+	Password string
+}
+
+type JwtConfig struct {
+	Secret                 string
+	RefreshSecret          string
+	AccessTokenExpireTime  time.Duration
+	RefreshTokenExpireTime time.Duration
+}
+
+type PasswordConfig struct {
+	IncludeChars     bool
+	IncludeDigits    bool
+	MinLength        int
+	MaxLength        int
+	IncludeUppercase bool
+	IncludeLowercase bool
 }
 
 var (

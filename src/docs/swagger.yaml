@@ -1,4 +1,46 @@
 definitions:
+  dto.LoginByUsernameRequest:
+    properties:
+      password:
+        minLength: 6
+        type: string
+      username:
+        minLength: 5
+        type: string
+    required:
+    - password
+    - username
+    type: object
+  dto.RefreshTokenRequest:
+    properties:
+      refresh_token:
+        type: string
+    required:
+    - refresh_token
+    type: object
+  dto.RegisterUserByUsernameRequest:
+    properties:
+      email:
+        minLength: 6
+        type: string
+      firstName:
+        minLength: 3
+        type: string
+      lastName:
+        minLength: 6
+        type: string
+      password:
+        minLength: 6
+        type: string
+      username:
+        minLength: 5
+        type: string
+    required:
+    - firstName
+    - lastName
+    - password
+    - username
+    type: object
   helpers.BaseHTTPResponse:
     properties:
       error: {}
@@ -7,6 +49,10 @@ definitions:
         $ref: '#/definitions/helpers.ResultCode'
       success:
         type: boolean
+      validation_errors:
+        items:
+          $ref: '#/definitions/validators.ValidationError'
+        type: array
     type: object
   helpers.ResultCode:
     enum:
@@ -16,6 +62,17 @@ definitions:
     x-enum-varnames:
     - Success
     - CustomRecovery
+  validators.ValidationError:
+    properties:
+      message:
+        type: string
+      property:
+        type: string
+      tag:
+        type: string
+      value:
+        type: string
+    type: object
 info:
   contact:
     email: mahdipeydai@gmail.com
@@ -32,4 +89,124 @@ paths:
             $ref: '#/definitions/helpers.BaseHTTPResponse'
       security:
       - AuthBearer: []
+  /v1/users/login:
+    post:
+      consumes:
+      - application/json
+      description: Login By Username
+      parameters:
+      - description: Login by username
+        in: body
+        name: Request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.LoginByUsernameRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Success
+          schema:
+            $ref: '#/definitions/helpers.BaseHTTPResponse'
+        "400":
+          description: Failed
+          schema:
+            $ref: '#/definitions/helpers.BaseHTTPResponse'
+        "404":
+          description: Failed
+          schema:
+            $ref: '#/definitions/helpers.BaseHTTPResponse'
+        "409":
+          description: Failed
+          schema:
+            $ref: '#/definitions/helpers.BaseHTTPResponse'
+        "500":
+          description: Failed
+          schema:
+            $ref: '#/definitions/helpers.BaseHTTPResponse'
+      summary: Login By Username
+      tags:
+      - Users
+  /v1/users/refresh-token:
+    post:
+      consumes:
+      - application/json
+      description: Generates a new access token and refresh token using a valid refresh
+        token.
+      parameters:
+      - description: Refresh token
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.RefreshTokenRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Success
+          schema:
+            $ref: '#/definitions/helpers.BaseHTTPResponse'
+        "400":
+          description: Failed
+          schema:
+            $ref: '#/definitions/helpers.BaseHTTPResponse'
+        "404":
+          description: Failed
+          schema:
+            $ref: '#/definitions/helpers.BaseHTTPResponse'
+        "409":
+          description: Failed
+          schema:
+            $ref: '#/definitions/helpers.BaseHTTPResponse'
+        "500":
+          description: Failed
+          schema:
+            $ref: '#/definitions/helpers.BaseHTTPResponse'
+      summary: Refresh access token
+      tags:
+      - Users
+  /v1/users/register:
+    post:
+      consumes:
+      - application/json
+      description: Register By Username
+      parameters:
+      - description: Register by username
+        in: body
+        name: Request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.RegisterUserByUsernameRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Success
+          schema:
+            $ref: '#/definitions/helpers.BaseHTTPResponse'
+        "400":
+          description: Failed
+          schema:
+            $ref: '#/definitions/helpers.BaseHTTPResponse'
+        "404":
+          description: Failed
+          schema:
+            $ref: '#/definitions/helpers.BaseHTTPResponse'
+        "409":
+          description: Failed
+          schema:
+            $ref: '#/definitions/helpers.BaseHTTPResponse'
+        "500":
+          description: Failed
+          schema:
+            $ref: '#/definitions/helpers.BaseHTTPResponse'
+      summary: Register By Username
+      tags:
+      - Users
+securityDefinitions:
+  AuthBearer:
+    in: header
+    name: Authorization
+    type: apiKey
 swagger: "2.0"

@@ -3,9 +3,13 @@ package api
 import (
 	"fmt"
 
+	"github.com/bytedance/gopkg/util/logger"
 	"github.com/gin-gonic/gin"
+	"github.com/gin-gonic/gin/binding"
+	"github.com/go-playground/validator/v10"
 	"github.com/mahdipeydai/taskmanager-go/api/middlewares"
 	"github.com/mahdipeydai/taskmanager-go/api/routers"
+	"github.com/mahdipeydai/taskmanager-go/api/validators"
 	"github.com/mahdipeydai/taskmanager-go/config"
 	"github.com/mahdipeydai/taskmanager-go/docs"
 	"github.com/mahdipeydai/taskmanager-go/pkg/logging"
@@ -15,10 +19,11 @@ import (
 
 func InitServer(cfg *config.Config) {
 	engin := gin.New()
+	registerCustomValidators()
 	engin.Use(gin.Logger(), gin.CustomRecovery(middlewares.ErrorHandler))
 
 	registerMiddlewares(engin, cfg)
-	registerRoutes(engin)
+	registerRoutes(engin, cfg)
 	registerSwagger(engin, cfg)
 
 	err := engin.Run(fmt.Sprintf(":%d", cfg.Server.InternalPort))
@@ -35,13 +40,16 @@ func registerMiddlewares(g *gin.Engine, cfg *config.Config) {
 	)
 }
 
-func registerRoutes(g *gin.Engine) {
+func registerRoutes(g *gin.Engine, cfg *config.Config) {
 	apiGroup := g.Group("/api")
 	v1Group := apiGroup.Group("/v1")
 
 	{
 		healthRouterGroup := v1Group.Group("/health")
 		routers.HealthRouter(healthRouterGroup)
+
+		usersRouterGroup := v1Group.Group("/users")
+		routers.UsersRouter(usersRouterGroup, cfg)
 	}
 
 }
@@ -53,4 +61,17 @@ func registerSwagger(g *gin.Engine, cfg *config.Config) {
 	docs.SwaggerInfo.Schemes = []string{"http"}
 
 	g.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+}
+
+func registerCustomValidators() {
+	val, ok := binding.Validator.Engine().(*validator.Validate)
+	if ok {
+		err := val.RegisterValidation("userPassword", validators.UserPasswordValidator, true)
+		if err != nil {
+			extras := map[logging.ExtraKey]interface{}{
+				logging.ErrorMessage: err.Error(),
+			}
+			logger.Fatal(logging.Internal, logging.StartUp, "Registering user password validator failed", extras)
+		}
+	}
 }

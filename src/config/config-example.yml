@@ -29,3 +29,17 @@ logger:
   filePath: ../logs/
   level: debug
   loggerName: zap
+admin:
+  password: "1qaz!QAZ"
+jwt:
+  secret: "changeme"
+  refreshSecret: "changeme"
+  accessTokenExpireTime: 60
+  refreshTokenExpireTime: 60
+password:
+  includeChars: true
+  includeDigits: true
+  minLength: 6
+  maxLength: 64
+  includeUppercase: true
+  includeLowercase: true

@@ -16,6 +16,7 @@ func InitServer(cfg *config.Config) {
 	engin := gin.New()
 	engin.Use(gin.Logger(), gin.CustomRecovery(middlewares.ErrorHandler))
 
+	registerMiddlewares(engin, cfg)
 	registerRoutes(engin)
 	registerSwagger(engin, cfg)
 
@@ -23,6 +24,12 @@ func InitServer(cfg *config.Config) {
 	if err != nil {
 		return
 	}
+}
+
+func registerMiddlewares(g *gin.Engine, cfg *config.Config) {
+	g.Use(
+		middlewares.Cors(cfg.Server.AllowOrigins),
+	)
 }
 
 func registerRoutes(g *gin.Engine) {

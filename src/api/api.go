@@ -29,6 +29,7 @@ func InitServer(cfg *config.Config) {
 func registerMiddlewares(g *gin.Engine, cfg *config.Config) {
 	g.Use(
 		middlewares.Cors(cfg.Server.AllowOrigins),
+		middlewares.LimitByRequest(float64(cfg.Server.RateLimit)),
 	)
 }
 

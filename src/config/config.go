@@ -22,6 +22,7 @@ type ServerConfig struct {
 	InternalPort int
 	ExternalPort int
 	AllowOrigins string
+	RateLimit    int
 }
 
 type RedisConfig struct {

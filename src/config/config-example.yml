@@ -2,6 +2,7 @@ Server:
   internalPort: 5000
   ExternalPort: 8080
   allowOrigins: "*"
+  rateLimit: 1
 Postgres:
   host: localhost
   port: 6432

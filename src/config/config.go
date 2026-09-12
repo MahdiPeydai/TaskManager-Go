@@ -20,6 +20,7 @@ type Config struct {
 
 type ServerConfig struct {
 	InternalPort int
+	ExternalPort int
 }
 
 type RedisConfig struct {

@@ -1,0 +1,56 @@
+{
+    "swagger": "2.0",
+    "info": {
+        "title": "TaskManager - Go",
+        "contact": {
+            "name": "Mahdi Peydai",
+            "email": "mahdipeydai@gmail.com"
+        },
+        "version": "0.1"
+    },
+    "paths": {
+        "/v1/health": {
+            "get": {
+                "security": [
+                    {
+                        "AuthBearer": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/helpers.BaseHTTPResponse"
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "definitions": {
+        "helpers.BaseHTTPResponse": {
+            "type": "object",
+            "properties": {
+                "error": {},
+                "result": {},
+                "result_code": {
+                    "$ref": "#/definitions/helpers.ResultCode"
+                },
+                "success": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "helpers.ResultCode": {
+            "type": "integer",
+            "enum": [
+                0,
+                50001
+            ],
+            "x-enum-varnames": [
+                "Success",
+                "CustomRecovery"
+            ]
+        }
+    }
+}

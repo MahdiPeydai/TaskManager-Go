@@ -3,7 +3,7 @@ package logging
 import (
 	"sync"
 
-	"github.com/mahdipeydai/golang-clean-web-api/config"
+	"github.com/mahdipeydai/taskmanager-go/config"
 )
 
 type LoggerInterface interface {

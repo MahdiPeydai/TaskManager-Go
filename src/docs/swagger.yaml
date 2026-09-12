@@ -1,0 +1,35 @@
+definitions:
+  helpers.BaseHTTPResponse:
+    properties:
+      error: {}
+      result: {}
+      result_code:
+        $ref: '#/definitions/helpers.ResultCode'
+      success:
+        type: boolean
+    type: object
+  helpers.ResultCode:
+    enum:
+    - 0
+    - 50001
+    type: integer
+    x-enum-varnames:
+    - Success
+    - CustomRecovery
+info:
+  contact:
+    email: mahdipeydai@gmail.com
+    name: Mahdi Peydai
+  title: TaskManager - Go
+  version: "0.1"
+paths:
+  /v1/health:
+    get:
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/helpers.BaseHTTPResponse'
+      security:
+      - AuthBearer: []
+swagger: "2.0"

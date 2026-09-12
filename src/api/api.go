@@ -4,9 +4,12 @@ import (
 	"fmt"
 
 	"github.com/gin-gonic/gin"
-	"github.com/mahdipeydai/golang-clean-web-api/api/middlewares"
-	"github.com/mahdipeydai/golang-clean-web-api/api/routers"
-	"github.com/mahdipeydai/golang-clean-web-api/config"
+	"github.com/mahdipeydai/taskmanager-go/api/middlewares"
+	"github.com/mahdipeydai/taskmanager-go/api/routers"
+	"github.com/mahdipeydai/taskmanager-go/config"
+	"github.com/mahdipeydai/taskmanager-go/docs"
+	swaggerFiles "github.com/swaggo/files"
+	ginSwagger "github.com/swaggo/gin-swagger"
 )
 
 func InitServer(cfg *config.Config) {
@@ -14,6 +17,7 @@ func InitServer(cfg *config.Config) {
 	engin.Use(gin.Logger(), gin.CustomRecovery(middlewares.ErrorHandler))
 
 	registerRoutes(engin)
+	registerSwagger(engin, cfg)
 
 	err := engin.Run(fmt.Sprintf(":%d", cfg.Server.InternalPort))
 	if err != nil {
@@ -30,4 +34,13 @@ func registerRoutes(g *gin.Engine) {
 		routers.HealthRouter(healthRouterGroup)
 	}
 
+}
+
+func registerSwagger(g *gin.Engine, cfg *config.Config) {
+	docs.SwaggerInfo.Description = "Swagger golang webservice API"
+	docs.SwaggerInfo.BasePath = "/api"
+	docs.SwaggerInfo.Host = fmt.Sprintf("localhost:%d", cfg.Server.ExternalPort)
+	docs.SwaggerInfo.Schemes = []string{"http"}
+
+	g.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 }

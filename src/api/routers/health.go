@@ -2,7 +2,7 @@ package routers
 
 import (
 	"github.com/gin-gonic/gin"
-	"github.com/mahdipeydai/golang-clean-web-api/api/handlers"
+	"github.com/mahdipeydai/taskmanager-go/api/handlers"
 )
 
 func HealthRouter(gr *gin.RouterGroup) {

@@ -1,5 +1,6 @@
 Server:
   internalPort: 5000
+  ExternalPort: 8080
 Postgres:
   host: localhost
   port: 6432

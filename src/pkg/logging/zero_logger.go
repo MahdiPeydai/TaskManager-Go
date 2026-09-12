@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/mahdipeydai/golang-clean-web-api/config"
+	"github.com/mahdipeydai/taskmanager-go/config"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/pkgerrors"
 )

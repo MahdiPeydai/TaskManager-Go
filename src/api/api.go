@@ -8,6 +8,7 @@ import (
 	"github.com/mahdipeydai/taskmanager-go/api/routers"
 	"github.com/mahdipeydai/taskmanager-go/config"
 	"github.com/mahdipeydai/taskmanager-go/docs"
+	"github.com/mahdipeydai/taskmanager-go/pkg/logging"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
 )
@@ -28,6 +29,7 @@ func InitServer(cfg *config.Config) {
 
 func registerMiddlewares(g *gin.Engine, cfg *config.Config) {
 	g.Use(
+		middlewares.LogRequestResponse(logging.GetLogger(cfg)),
 		middlewares.Cors(cfg.Server.AllowOrigins),
 		middlewares.LimitByRequest(float64(cfg.Server.RateLimit)),
 	)

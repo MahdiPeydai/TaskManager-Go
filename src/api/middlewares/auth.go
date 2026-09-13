@@ -34,7 +34,7 @@ func Authentication(cfg *config.Config) gin.HandlerFunc {
 				if scheme != constants.AuthorizationHeaderPrefix {
 					err = &service_errors.ServiceError{EndUserMessage: service_errors.InvalidTokenSchema}
 				} else {
-					claimMap, err = tokenService.GetClaims(token)
+					claimMap, err = tokenService.GetClaims(c.Request.Context(), token)
 					if err != nil {
 						switch err.(*jwt.ValidationError).Errors {
 						case jwt.ValidationErrorExpired:

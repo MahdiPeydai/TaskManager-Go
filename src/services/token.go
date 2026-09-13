@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -10,6 +11,7 @@ import (
 	"github.com/mahdipeydai/taskmanager-go/constants"
 	"github.com/mahdipeydai/taskmanager-go/pkg/logging"
 	"github.com/mahdipeydai/taskmanager-go/pkg/service_errors"
+	"github.com/mahdipeydai/taskmanager-go/pkg/tracing"
 )
 
 type TokenService struct {
@@ -34,9 +36,11 @@ func GetTokenService(cfg *config.Config, logger logging.LoggerInterface) *TokenS
 	}
 }
 
-func (s *TokenService) GenerateToken(token Token) (*dto.TokenDetail, error) {
-	td := &dto.TokenDetail{}
+func (s *TokenService) GenerateToken(ctx context.Context, token Token) (*dto.TokenDetail, error) {
+	ctx, span := tracing.Tracer(s.cfg).Start(ctx, "TokenService.GenerateToken")
+	defer span.End()
 
+	td := &dto.TokenDetail{}
 	td.AccessTokenExpireTime = time.Now().Add(s.cfg.Jwt.AccessTokenExpireTime * time.Second).Unix()
 	td.RefreshTokenExpireTime = time.Now().Add(s.cfg.Jwt.RefreshTokenExpireTime * time.Second).Unix()
 
@@ -76,7 +80,10 @@ func (s *TokenService) GenerateToken(token Token) (*dto.TokenDetail, error) {
 	return td, nil
 }
 
-func (s *TokenService) VerifyToken(token string) (*jwt.Token, error) {
+func (s *TokenService) VerifyToken(ctx context.Context, token string) (*jwt.Token, error) {
+	ctx, span := tracing.Tracer(s.cfg).Start(ctx, "TokenService.VerifyToken")
+	defer span.End()
+
 	at, err := jwt.Parse(token, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, service_errors.ServiceError{EndUserMessage: service_errors.UnexpectedError}
@@ -89,10 +96,13 @@ func (s *TokenService) VerifyToken(token string) (*jwt.Token, error) {
 	return at, nil
 }
 
-func (s *TokenService) GetClaims(token string) (claimMap map[string]interface{}, err error) {
+func (s *TokenService) GetClaims(ctx context.Context, token string) (claimMap map[string]interface{}, err error) {
+	ctx, span := tracing.Tracer(s.cfg).Start(ctx, "TokenService.GetTokenClaims")
+	defer span.End()
+
 	claimMap = make(map[string]interface{})
 
-	verifiedToken, err := s.VerifyToken(token)
+	verifiedToken, err := s.VerifyToken(ctx, token)
 	if err != nil {
 		return nil, err
 	}

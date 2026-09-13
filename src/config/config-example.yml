@@ -5,17 +5,17 @@ Server:
   rateLimit: 1
 Postgres:
   host: localhost
-  port: 6432
-  username: postgres
+  port: 5432
+  username: task-management
   password:
-  dbName: car_sale_db
+  dbName: task-management
   sslMode: disable
   maxIdleConnections: 5
   maxOpenConnections: 10
   connectionMaxLifetime: 5
 redis:
   host: localhost
-  port: 5379
+  port: 6379
   password:
   database: 0
   dialTimeout: 5

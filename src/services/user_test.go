@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
@@ -47,11 +48,15 @@ func createRefreshTokenForTest(
 	userID int,
 ) string {
 	t.Helper()
+	ctx := context.Background()
 
-	result, err := service.GenerateToken(Token{
-		UserId:   userID,
-		Username: "john",
-	})
+	result, err := service.GenerateToken(
+		ctx,
+		Token{
+			UserId:   userID,
+			Username: "john",
+		},
+	)
 
 	require.NoError(t, err)
 	require.NotEmpty(t, result.RefreshToken)
@@ -71,6 +76,7 @@ func testRegisterRequest() *dto.RegisterUserByUsernameRequest {
 
 func TestUsersService_CreateUserToken(t *testing.T) {
 	service, mock := testUsersService(t)
+	ctx := context.Background()
 
 	firstName := "John"
 	lastName := "Doe"
@@ -100,7 +106,7 @@ func TestUsersService_CreateUserToken(t *testing.T) {
 		},
 	}
 
-	result, err := service.CreateUserToken(user)
+	result, err := service.CreateUserToken(ctx, user)
 
 	require.NoError(t, err)
 	require.NotNil(t, result)
@@ -113,6 +119,7 @@ func TestUsersService_CreateUserToken(t *testing.T) {
 
 func TestUsersService_RefreshUserToken(t *testing.T) {
 	service, mock := testUsersService(t)
+	ctx := context.Background()
 
 	refreshToken := createRefreshTokenForTest(t, service.tokenService, 123)
 
@@ -173,6 +180,7 @@ func TestUsersService_RefreshUserToken(t *testing.T) {
 		)
 
 	result, err := service.RefreshUserToken(
+		ctx,
 		&dto.RefreshTokenRequest{
 			RefreshToken: refreshToken,
 		},
@@ -189,8 +197,10 @@ func TestUsersService_RefreshUserToken(t *testing.T) {
 
 func TestUsersService_RefreshUserToken_InvalidToken(t *testing.T) {
 	service, mock := testUsersService(t)
+	ctx := context.Background()
 
 	result, err := service.RefreshUserToken(
+		ctx,
 		&dto.RefreshTokenRequest{
 			RefreshToken: "invalid-token",
 		},
@@ -204,11 +214,15 @@ func TestUsersService_RefreshUserToken_InvalidToken(t *testing.T) {
 
 func TestUsersService_RefreshUserToken_AccessToken(t *testing.T) {
 	service, mock := testUsersService(t)
+	ctx := context.Background()
 
-	token, err := service.tokenService.GenerateToken(Token{
-		UserId:   123,
-		Username: "john",
-	})
+	token, err := service.tokenService.GenerateToken(
+		ctx,
+		Token{
+			UserId:   123,
+			Username: "john",
+		},
+	)
 
 	require.NoError(t, err)
 
@@ -218,6 +232,7 @@ func TestUsersService_RefreshUserToken_AccessToken(t *testing.T) {
 	)
 
 	result, err := service.RefreshUserToken(
+		ctx,
 		&dto.RefreshTokenRequest{
 			RefreshToken: accessToken,
 		},
@@ -239,6 +254,7 @@ func TestUsersService_RefreshUserToken_AccessToken(t *testing.T) {
 
 func TestUsersService_RefreshUserToken_UserNotFound(t *testing.T) {
 	service, mock := testUsersService(t)
+	ctx := context.Background()
 
 	refreshToken := createRefreshTokenForTest(
 		t,
@@ -253,6 +269,7 @@ func TestUsersService_RefreshUserToken_UserNotFound(t *testing.T) {
 		WillReturnError(gorm.ErrRecordNotFound)
 
 	result, err := service.RefreshUserToken(
+		ctx,
 		&dto.RefreshTokenRequest{
 			RefreshToken: refreshToken,
 		},
@@ -275,6 +292,7 @@ func TestUsersService_RefreshUserToken_UserNotFound(t *testing.T) {
 
 func TestUsersService_LoginByUsername(t *testing.T) {
 	service, mock := testUsersService(t)
+	ctx := context.Background()
 
 	password := "password123"
 
@@ -323,6 +341,7 @@ func TestUsersService_LoginByUsername(t *testing.T) {
 		)
 
 	result, err := service.LoginByUsername(
+		ctx,
 		&dto.LoginByUsernameRequest{
 			Username: "john",
 			Password: password,
@@ -340,6 +359,7 @@ func TestUsersService_LoginByUsername(t *testing.T) {
 
 func TestUsersService_RegisterByUsername_Success(t *testing.T) {
 	service, mock := testUsersService(t)
+	ctx := context.Background()
 
 	// Username does not exist.
 	mock.ExpectQuery(
@@ -386,7 +406,7 @@ func TestUsersService_RegisterByUsername_Success(t *testing.T) {
 	// Transaction commits.
 	mock.ExpectCommit()
 
-	err := service.RegisterByUsername(testRegisterRequest())
+	err := service.RegisterByUsername(ctx, testRegisterRequest())
 
 	require.NoError(t, err)
 	require.NoError(t, mock.ExpectationsWereMet())
@@ -394,6 +414,7 @@ func TestUsersService_RegisterByUsername_Success(t *testing.T) {
 
 func TestUsersService_RegisterByUsername_UsernameExists(t *testing.T) {
 	service, mock := testUsersService(t)
+	ctx := context.Background()
 
 	mock.ExpectQuery(
 		`SELECT count\(\*\) > 0 FROM "users" WHERE username = \$1`,
@@ -403,7 +424,7 @@ func TestUsersService_RegisterByUsername_UsernameExists(t *testing.T) {
 			sqlmock.NewRows([]string{"count"}).AddRow(true),
 		)
 
-	err := service.RegisterByUsername(testRegisterRequest())
+	err := service.RegisterByUsername(ctx, testRegisterRequest())
 
 	require.Error(t, err)
 
@@ -421,6 +442,7 @@ func TestUsersService_RegisterByUsername_UsernameExists(t *testing.T) {
 
 func TestUsersService_RegisterByUsername_EmailExists(t *testing.T) {
 	service, mock := testUsersService(t)
+	ctx := context.Background()
 
 	// Username does not exist.
 	mock.ExpectQuery(
@@ -440,7 +462,7 @@ func TestUsersService_RegisterByUsername_EmailExists(t *testing.T) {
 			sqlmock.NewRows([]string{"count"}).AddRow(true),
 		)
 
-	err := service.RegisterByUsername(testRegisterRequest())
+	err := service.RegisterByUsername(ctx, testRegisterRequest())
 
 	require.Error(t, err)
 
@@ -458,6 +480,7 @@ func TestUsersService_RegisterByUsername_EmailExists(t *testing.T) {
 
 func TestUsersService_RegisterByUsername_UsernameQueryDatabaseError(t *testing.T) {
 	service, mock := testUsersService(t)
+	ctx := context.Background()
 
 	dbError := errors.New("database connection error")
 
@@ -467,7 +490,7 @@ func TestUsersService_RegisterByUsername_UsernameQueryDatabaseError(t *testing.T
 		WithArgs("john").
 		WillReturnError(dbError)
 
-	err := service.RegisterByUsername(testRegisterRequest())
+	err := service.RegisterByUsername(ctx, testRegisterRequest())
 
 	require.Error(t, err)
 	assert.ErrorIs(t, err, dbError)
@@ -477,6 +500,7 @@ func TestUsersService_RegisterByUsername_UsernameQueryDatabaseError(t *testing.T
 
 func TestUsersService_RegisterByUsername_EmailQueryDatabaseError(t *testing.T) {
 	service, mock := testUsersService(t)
+	ctx := context.Background()
 
 	dbError := errors.New("database connection error")
 
@@ -496,7 +520,7 @@ func TestUsersService_RegisterByUsername_EmailQueryDatabaseError(t *testing.T) {
 		WithArgs("john@example.com").
 		WillReturnError(dbError)
 
-	err := service.RegisterByUsername(testRegisterRequest())
+	err := service.RegisterByUsername(ctx, testRegisterRequest())
 
 	require.Error(t, err)
 	assert.ErrorIs(t, err, dbError)
@@ -506,6 +530,7 @@ func TestUsersService_RegisterByUsername_EmailQueryDatabaseError(t *testing.T) {
 
 func TestUsersService_RegisterByUsername_DefaultRoleNotFound(t *testing.T) {
 	service, mock := testUsersService(t)
+	ctx := context.Background()
 
 	// Username doesn't exist.
 	mock.ExpectQuery(
@@ -532,7 +557,7 @@ func TestUsersService_RegisterByUsername_DefaultRoleNotFound(t *testing.T) {
 		WithArgs(constants.DefaultRoleName, 1).
 		WillReturnError(gorm.ErrRecordNotFound)
 
-	err := service.RegisterByUsername(testRegisterRequest())
+	err := service.RegisterByUsername(ctx, testRegisterRequest())
 
 	require.Error(t, err)
 	assert.ErrorIs(t, err, gorm.ErrRecordNotFound)
@@ -542,6 +567,7 @@ func TestUsersService_RegisterByUsername_DefaultRoleNotFound(t *testing.T) {
 
 func TestUsersService_RegisterByUsername_TransactionBeginFailure(t *testing.T) {
 	service, mock := testUsersService(t)
+	ctx := context.Background()
 
 	// Username doesn't exist.
 	mock.ExpectQuery(
@@ -574,7 +600,7 @@ func TestUsersService_RegisterByUsername_TransactionBeginFailure(t *testing.T) {
 
 	mock.ExpectBegin().WillReturnError(dbError)
 
-	err := service.RegisterByUsername(testRegisterRequest())
+	err := service.RegisterByUsername(ctx, testRegisterRequest())
 
 	require.Error(t, err)
 	assert.ErrorIs(t, err, dbError)
@@ -584,6 +610,7 @@ func TestUsersService_RegisterByUsername_TransactionBeginFailure(t *testing.T) {
 
 func TestUsersService_RegisterByUsername_CreateUserFailure(t *testing.T) {
 	service, mock := testUsersService(t)
+	ctx := context.Background()
 
 	// Username doesn't exist.
 	mock.ExpectQuery(
@@ -621,7 +648,7 @@ func TestUsersService_RegisterByUsername_CreateUserFailure(t *testing.T) {
 
 	mock.ExpectRollback()
 
-	err := service.RegisterByUsername(testRegisterRequest())
+	err := service.RegisterByUsername(ctx, testRegisterRequest())
 
 	require.Error(t, err)
 	assert.ErrorIs(t, err, dbError)
@@ -631,6 +658,7 @@ func TestUsersService_RegisterByUsername_CreateUserFailure(t *testing.T) {
 
 func TestUsersService_RegisterByUsername_CreateUserRoleFailure(t *testing.T) {
 	service, mock := testUsersService(t)
+	ctx := context.Background()
 
 	// Username doesn't exist.
 	mock.ExpectQuery(
@@ -675,7 +703,7 @@ func TestUsersService_RegisterByUsername_CreateUserRoleFailure(t *testing.T) {
 
 	mock.ExpectRollback()
 
-	err := service.RegisterByUsername(testRegisterRequest())
+	err := service.RegisterByUsername(ctx, testRegisterRequest())
 
 	require.Error(t, err)
 	assert.ErrorIs(t, err, dbError)
@@ -685,6 +713,7 @@ func TestUsersService_RegisterByUsername_CreateUserRoleFailure(t *testing.T) {
 
 func TestUsersService_RegisterByUsername_CommitFailure(t *testing.T) {
 	service, mock := testUsersService(t)
+	ctx := context.Background()
 
 	// Username doesn't exist.
 	mock.ExpectQuery(
@@ -731,7 +760,7 @@ func TestUsersService_RegisterByUsername_CommitFailure(t *testing.T) {
 	dbError := errors.New("commit failed")
 	mock.ExpectCommit().WillReturnError(dbError)
 
-	err := service.RegisterByUsername(testRegisterRequest())
+	err := service.RegisterByUsername(ctx, testRegisterRequest())
 
 	require.Error(t, err)
 	assert.ErrorIs(t, err, dbError)

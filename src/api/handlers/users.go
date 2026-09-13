@@ -56,7 +56,7 @@ func (uh UsersHandler) RegisterByUsername(c *gin.Context) {
 		return
 	}
 
-	err = uh.userService.RegisterByUsername(req)
+	err = uh.userService.RegisterByUsername(c.Request.Context(), req)
 	if err != nil {
 		c.
 			AbortWithStatusJSON(
@@ -74,7 +74,7 @@ func (uh UsersHandler) RegisterByUsername(c *gin.Context) {
 	loginReq.Username = req.Username
 	loginReq.Password = req.Password
 	var token *dto.TokenDetail
-	token, err = uh.userService.LoginByUsername(loginReq)
+	token, err = uh.userService.LoginByUsername(c.Request.Context(), loginReq)
 	if err != nil {
 		c.
 			AbortWithStatusJSON(
@@ -130,7 +130,7 @@ func (uh UsersHandler) LoginByUsername(c *gin.Context) {
 	}
 
 	var token *dto.TokenDetail
-	token, err = uh.userService.LoginByUsername(req)
+	token, err = uh.userService.LoginByUsername(c.Request.Context(), req)
 	if err != nil {
 		c.
 			AbortWithStatusJSON(
@@ -188,7 +188,7 @@ func (uh UsersHandler) RefreshToken(c *gin.Context) {
 	}
 
 	var token *dto.TokenDetail
-	token, err = uh.userService.RefreshUserToken(req)
+	token, err = uh.userService.RefreshUserToken(c.Request.Context(), req)
 	if err != nil {
 		c.
 			AbortWithStatusJSON(

@@ -168,6 +168,8 @@ func (s *TaskService) GetByID(ctx context.Context, userID int, roles []string, i
 }
 
 func (s *TaskService) Update(ctx context.Context, userID int, roles []string, id int, req *dto.UpdateTaskRequest) (*dto.TaskResponse, error) {
+	ctx, span := tracing.Tracer(s.cfg).Start(ctx, "TaskService.UpdateTask")
+	defer span.End()
 	tx := s.db.WithContext(ctx).Begin()
 	if tx.Error != nil {
 		return nil, tx.Error
@@ -277,8 +279,10 @@ func (s *TaskService) Update(ctx context.Context, userID int, roles []string, id
 }
 
 func (s *TaskService) Delete(ctx context.Context, userID int, roles []string, id int) error {
-	var task models.Task
+	ctx, span := tracing.Tracer(s.cfg).Start(ctx, "TaskService.DeleteTask")
+	defer span.End()
 
+	var task models.Task
 	err := s.db.WithContext(ctx).
 		Where("id = ? AND deleted_by IS NULL", id).
 		First(&task).Error
@@ -380,6 +384,9 @@ func (s *TaskService) Delete(ctx context.Context, userID int, roles []string, id
 }
 
 func (s *TaskService) GetByFilter(ctx context.Context, userID int, roles []string, req *dto.TaskListRequest) (*dto.TaskListResponse, error) {
+	ctx, span := tracing.Tracer(s.cfg).Start(ctx, "TaskService.GetTasksByFilter")
+	defer span.End()
+
 	if !common.IsAdmin(roles) && req.AssigneeID != nil {
 		return nil, service_errors.ServiceError{
 			EndUserMessage: service_errors.PermissionDenied,

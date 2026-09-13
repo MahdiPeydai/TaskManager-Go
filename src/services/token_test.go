@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"strings"
 	"testing"
 	"time"
@@ -27,6 +28,7 @@ func testTokenService() *TokenService {
 
 func TestTokenService_GenerateToken(t *testing.T) {
 	service := testTokenService()
+	ctx := context.Background()
 
 	firstName := "John"
 	lastName := "Doe"
@@ -45,7 +47,7 @@ func TestTokenService_GenerateToken(t *testing.T) {
 
 	before := time.Now().Unix()
 
-	result, err := service.GenerateToken(tokenData)
+	result, err := service.GenerateToken(ctx, tokenData)
 
 	require.NoError(t, err)
 	require.NotNil(t, result)
@@ -77,14 +79,14 @@ func TestTokenService_GenerateToken(t *testing.T) {
 		constants.AuthorizationHeaderPrefix+" ",
 	)
 
-	verifiedAccessToken, err := service.VerifyToken(accessToken)
+	verifiedAccessToken, err := service.VerifyToken(ctx, accessToken)
 
 	require.NoError(t, err)
 	require.NotNil(t, verifiedAccessToken)
 	assert.True(t, verifiedAccessToken.Valid)
 
 	// Verify the refresh token.
-	verifiedRefreshToken, err := service.VerifyToken(result.RefreshToken)
+	verifiedRefreshToken, err := service.VerifyToken(ctx, result.RefreshToken)
 
 	require.NoError(t, err)
 	require.NotNil(t, verifiedRefreshToken)
@@ -93,6 +95,7 @@ func TestTokenService_GenerateToken(t *testing.T) {
 
 func TestTokenService_GenerateToken_Claims(t *testing.T) {
 	service := testTokenService()
+	ctx := context.Background()
 
 	firstName := "John"
 	lastName := "Doe"
@@ -105,7 +108,7 @@ func TestTokenService_GenerateToken_Claims(t *testing.T) {
 		Roles:     []string{"user", "admin"},
 	}
 
-	result, err := service.GenerateToken(tokenData)
+	result, err := service.GenerateToken(ctx, tokenData)
 
 	require.NoError(t, err)
 
@@ -114,7 +117,7 @@ func TestTokenService_GenerateToken_Claims(t *testing.T) {
 		constants.AuthorizationHeaderPrefix+" ",
 	)
 
-	claims, err := service.GetClaims(accessToken)
+	claims, err := service.GetClaims(ctx, accessToken)
 
 	require.NoError(t, err)
 
@@ -129,6 +132,7 @@ func TestTokenService_GenerateToken_Claims(t *testing.T) {
 
 func TestTokenService_GenerateToken_RefreshTokenClaims(t *testing.T) {
 	service := testTokenService()
+	ctx := context.Background()
 
 	tokenData := Token{
 		UserId:   123,
@@ -136,11 +140,11 @@ func TestTokenService_GenerateToken_RefreshTokenClaims(t *testing.T) {
 		Roles:    []string{"user"},
 	}
 
-	result, err := service.GenerateToken(tokenData)
+	result, err := service.GenerateToken(ctx, tokenData)
 
 	require.NoError(t, err)
 
-	claims, err := service.GetClaims(result.RefreshToken)
+	claims, err := service.GetClaims(ctx, result.RefreshToken)
 
 	require.NoError(t, err)
 
@@ -150,6 +154,7 @@ func TestTokenService_GenerateToken_RefreshTokenClaims(t *testing.T) {
 
 func TestTokenService_VerifyToken(t *testing.T) {
 	service := testTokenService()
+	ctx := context.Background()
 
 	validTokenData := Token{
 		UserId:   123,
@@ -157,7 +162,7 @@ func TestTokenService_VerifyToken(t *testing.T) {
 		Roles:    []string{"user"},
 	}
 
-	generated, err := service.GenerateToken(validTokenData)
+	generated, err := service.GenerateToken(ctx, validTokenData)
 	require.NoError(t, err)
 
 	validAccessToken := strings.TrimPrefix(
@@ -192,7 +197,7 @@ func TestTokenService_VerifyToken(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := service.VerifyToken(tt.token)
+			result, err := service.VerifyToken(ctx, tt.token)
 
 			if tt.expectError {
 				assert.Error(t, err)
@@ -208,6 +213,7 @@ func TestTokenService_VerifyToken(t *testing.T) {
 
 func TestTokenService_VerifyToken_RejectsNonHMAC(t *testing.T) {
 	service := testTokenService()
+	ctx := context.Background()
 
 	token := jwt.NewWithClaims(
 		jwt.SigningMethodNone,
@@ -219,7 +225,7 @@ func TestTokenService_VerifyToken_RejectsNonHMAC(t *testing.T) {
 	tokenString, err := token.SignedString(jwt.UnsafeAllowNoneSignatureType)
 	require.NoError(t, err)
 
-	result, err := service.VerifyToken(tokenString)
+	result, err := service.VerifyToken(ctx, tokenString)
 
 	assert.Error(t, err)
 	assert.Nil(t, result)
@@ -227,13 +233,14 @@ func TestTokenService_VerifyToken_RejectsNonHMAC(t *testing.T) {
 
 func TestTokenService_VerifyToken_WrongSecret(t *testing.T) {
 	service := testTokenService()
+	ctx := context.Background()
 
 	tokenData := Token{
 		UserId:   123,
 		Username: "john",
 	}
 
-	generated, err := service.GenerateToken(tokenData)
+	generated, err := service.GenerateToken(ctx, tokenData)
 	require.NoError(t, err)
 
 	accessToken := strings.TrimPrefix(
@@ -248,7 +255,7 @@ func TestTokenService_VerifyToken_WrongSecret(t *testing.T) {
 
 	otherService := GetTokenService(otherCfg, &mocks.MockLogger{})
 
-	result, err := otherService.VerifyToken(accessToken)
+	result, err := otherService.VerifyToken(ctx, accessToken)
 
 	assert.Error(t, err)
 	assert.Nil(t, result)
@@ -256,6 +263,7 @@ func TestTokenService_VerifyToken_WrongSecret(t *testing.T) {
 
 func TestTokenService_GetClaims(t *testing.T) {
 	service := testTokenService()
+	ctx := context.Background()
 
 	tokenData := Token{
 		UserId:   123,
@@ -263,7 +271,7 @@ func TestTokenService_GetClaims(t *testing.T) {
 		Roles:    []string{"user"},
 	}
 
-	generated, err := service.GenerateToken(tokenData)
+	generated, err := service.GenerateToken(ctx, tokenData)
 	require.NoError(t, err)
 
 	accessToken := strings.TrimPrefix(
@@ -290,7 +298,7 @@ func TestTokenService_GetClaims(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			claims, err := service.GetClaims(tt.token)
+			claims, err := service.GetClaims(ctx, tt.token)
 
 			if tt.expectError {
 				assert.Error(t, err)

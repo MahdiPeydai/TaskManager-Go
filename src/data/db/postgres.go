@@ -8,6 +8,7 @@ import (
 	"github.com/mahdipeydai/taskmanager-go/pkg/logging"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
+	"gorm.io/plugin/opentelemetry/tracing"
 )
 
 var logger = logging.GetLogger(config.GetConfig())
@@ -25,8 +26,11 @@ func InitDb(cfg *config.Config) error {
 	)
 
 	db, err := gorm.Open(postgres.Open(cnn), &gorm.Config{})
-
 	if err != nil {
+		return err
+	}
+
+	if err := db.Use(tracing.NewPlugin()); err != nil {
 		return err
 	}
 

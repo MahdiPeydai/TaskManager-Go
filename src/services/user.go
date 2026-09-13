@@ -1,6 +1,8 @@
 package services
 
 import (
+	"context"
+
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/mahdipeydai/taskmanager-go/api/dto"
 	"github.com/mahdipeydai/taskmanager-go/common"
@@ -10,6 +12,7 @@ import (
 	"github.com/mahdipeydai/taskmanager-go/pkg/logging"
 	"github.com/mahdipeydai/taskmanager-go/pkg/metrics"
 	"github.com/mahdipeydai/taskmanager-go/pkg/service_errors"
+	"github.com/mahdipeydai/taskmanager-go/pkg/tracing"
 	"gorm.io/gorm"
 )
 
@@ -17,19 +20,22 @@ type UsersService struct {
 	logger       logging.LoggerInterface
 	cfg          *config.Config
 	tokenService *TokenService
-	database     *gorm.DB
+	db           *gorm.DB
 }
 
-func GetUsersService(database *gorm.DB, cfg *config.Config, logger logging.LoggerInterface) *UsersService {
+func GetUsersService(db *gorm.DB, cfg *config.Config, logger logging.LoggerInterface) *UsersService {
 	return &UsersService{
 		logger:       logger,
 		cfg:          cfg,
 		tokenService: GetTokenService(cfg, logger),
-		database:     database,
+		db:           db,
 	}
 }
 
-func (s *UsersService) CreateUserToken(user *models.User) (*dto.TokenDetail, error) {
+func (s *UsersService) CreateUserToken(ctx context.Context, user *models.User) (*dto.TokenDetail, error) {
+	ctx, span := tracing.Tracer(s.cfg).Start(ctx, "UserService.CreateUserToken")
+	defer span.End()
+
 	td := Token{
 		UserId:       user.Id,
 		Username:     user.Username,
@@ -42,15 +48,18 @@ func (s *UsersService) CreateUserToken(user *models.User) (*dto.TokenDetail, err
 	for _, ur := range user.Roles {
 		td.Roles = append(td.Roles, ur.Role.Name)
 	}
-	token, err := s.tokenService.GenerateToken(td)
+	token, err := s.tokenService.GenerateToken(ctx, td)
 	if err != nil {
 		return nil, err
 	}
 	return token, nil
 }
 
-func (s *UsersService) RefreshUserToken(req *dto.RefreshTokenRequest) (*dto.TokenDetail, error) {
-	verifiedToken, err := s.tokenService.VerifyToken(req.RefreshToken)
+func (s *UsersService) RefreshUserToken(ctx context.Context, req *dto.RefreshTokenRequest) (*dto.TokenDetail, error) {
+	ctx, span := tracing.Tracer(s.cfg).Start(ctx, "UserService.RefreshUserToken")
+	defer span.End()
+
+	verifiedToken, err := s.tokenService.VerifyToken(ctx, req.RefreshToken)
 	if err != nil {
 		return nil, err
 	}
@@ -77,7 +86,7 @@ func (s *UsersService) RefreshUserToken(req *dto.RefreshTokenRequest) (*dto.Toke
 	}
 
 	var u models.User
-	err = s.database.
+	err = s.db.WithContext(ctx).
 		Model(&models.User{}).
 		Where("id = ?", userID).
 		Preload("Roles", func(tx *gorm.DB) *gorm.DB {
@@ -92,11 +101,14 @@ func (s *UsersService) RefreshUserToken(req *dto.RefreshTokenRequest) (*dto.Toke
 
 	metrics.DbCall.WithLabelValues("user", "select", "success").Inc()
 
-	return s.CreateUserToken(&u)
+	return s.CreateUserToken(ctx, &u)
 }
 
-func (s *UsersService) RegisterByUsername(req *dto.RegisterUserByUsernameRequest) error {
-	exists, err := s.existsByUsername(req.Username)
+func (s *UsersService) RegisterByUsername(ctx context.Context, req *dto.RegisterUserByUsernameRequest) error {
+	ctx, span := tracing.Tracer(s.cfg).Start(ctx, "UserService.RegisterUserByUsername")
+	defer span.End()
+
+	exists, err := s.existsByUsername(ctx, req.Username)
 	if err != nil {
 		return err
 	}
@@ -104,7 +116,7 @@ func (s *UsersService) RegisterByUsername(req *dto.RegisterUserByUsernameRequest
 		return service_errors.ServiceError{EndUserMessage: service_errors.UsernameExists}
 	}
 
-	exists, err = s.existsByEmail(req.Email)
+	exists, err = s.existsByEmail(ctx, req.Email)
 	if err != nil {
 		return err
 	}
@@ -130,7 +142,7 @@ func (s *UsersService) RegisterByUsername(req *dto.RegisterUserByUsernameRequest
 
 	u.Password = &password
 
-	roleId, err := s.getDefaultRole()
+	roleId, err := s.getDefaultRole(ctx)
 	if err != nil {
 		extras := map[logging.ExtraKey]interface{}{
 			logging.ErrorMessage: err.Error(),
@@ -139,7 +151,7 @@ func (s *UsersService) RegisterByUsername(req *dto.RegisterUserByUsernameRequest
 		return err
 	}
 
-	tx := s.database.Begin()
+	tx := s.db.WithContext(ctx).Begin()
 	if tx.Error != nil {
 		return tx.Error
 	}
@@ -185,9 +197,12 @@ func (s *UsersService) RegisterByUsername(req *dto.RegisterUserByUsernameRequest
 	return nil
 }
 
-func (s *UsersService) LoginByUsername(req *dto.LoginByUsernameRequest) (*dto.TokenDetail, error) {
+func (s *UsersService) LoginByUsername(ctx context.Context, req *dto.LoginByUsernameRequest) (*dto.TokenDetail, error) {
+	ctx, span := tracing.Tracer(s.cfg).Start(ctx, "UserService.LoginUserByUsername")
+	defer span.End()
+
 	var u models.User
-	err := s.database.
+	err := s.db.WithContext(ctx).
 		Model(&models.User{}).
 		Where("username = ?", req.Username).
 		Preload("Roles", func(tx *gorm.DB) *gorm.DB {
@@ -210,12 +225,16 @@ func (s *UsersService) LoginByUsername(req *dto.LoginByUsernameRequest) (*dto.To
 		}
 	}
 
-	return s.CreateUserToken(&u)
+	return s.CreateUserToken(ctx, &u)
 }
 
-func (s *UsersService) existsByEmail(email string) (bool, error) {
+func (s *UsersService) existsByEmail(ctx context.Context, email string) (bool, error) {
+	ctx, span := tracing.Tracer(s.cfg).Start(ctx, "UserService.ExistsUserEmail")
+	defer span.End()
+
 	var exists bool
-	if err := s.database.Model(&models.User{}).
+	if err := s.db.WithContext(ctx).
+		Model(&models.User{}).
 		Select("count(*) > 0").
 		Where("email = ?", email).
 		Find(&exists).
@@ -231,9 +250,13 @@ func (s *UsersService) existsByEmail(email string) (bool, error) {
 	return exists, nil
 }
 
-func (s *UsersService) existsByUsername(username string) (bool, error) {
+func (s *UsersService) existsByUsername(ctx context.Context, username string) (bool, error) {
+	ctx, span := tracing.Tracer(s.cfg).Start(ctx, "UserService.ExistsUserUsername")
+	defer span.End()
+
 	var exists bool
-	if err := s.database.Model(&models.User{}).
+	if err := s.db.WithContext(ctx).
+		Model(&models.User{}).
 		Select("count(*) > 0").
 		Where("username = ?", username).
 		Find(&exists).
@@ -249,8 +272,12 @@ func (s *UsersService) existsByUsername(username string) (bool, error) {
 	return exists, nil
 }
 
-func (s *UsersService) getDefaultRole() (roleId int, err error) {
-	if err = s.database.Model(&models.Role{}).
+func (s *UsersService) getDefaultRole(ctx context.Context) (roleId int, err error) {
+	ctx, span := tracing.Tracer(s.cfg).Start(ctx, "UserService.GetDefaultRole")
+	defer span.End()
+
+	if err = s.db.WithContext(ctx).
+		Model(&models.Role{}).
 		Select("id").
 		Where("name = ?", constants.DefaultRoleName).
 		First(&roleId).Error; err != nil {

@@ -15,6 +15,7 @@ type Config struct {
 	Server   ServerConfig
 	Redis    RedisConfig
 	Postgres PostgresConfig
+	Jaeger   JaegerConfig
 	Logger   LoggerConfig
 	Admin    AdminConfig
 	Jwt      JwtConfig
@@ -52,6 +53,12 @@ type PostgresConfig struct {
 	MaxIdleConnections    int
 	MaxOpenConnections    int
 	ConnectionMaxLifetime time.Duration
+}
+
+type JaegerConfig struct {
+	Host string
+	Port int
+	App  string
 }
 
 type LoggerConfig struct {

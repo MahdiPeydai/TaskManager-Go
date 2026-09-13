@@ -17,6 +17,7 @@ import (
 	"github.com/mahdipeydai/taskmanager-go/pkg/logging"
 	"github.com/mahdipeydai/taskmanager-go/pkg/metrics"
 	"github.com/mahdipeydai/taskmanager-go/pkg/service_errors"
+	"github.com/mahdipeydai/taskmanager-go/pkg/tracing"
 	"gorm.io/gorm"
 )
 
@@ -41,6 +42,8 @@ func GetTaskService(database *gorm.DB, redis *redis.Client, cfg *config.Config, 
 }
 
 func (s *TaskService) CreateTask(ctx context.Context, userID int, roles []string, req *dto.CreateTaskRequest) (*dto.TaskResponse, error) {
+	ctx, span := tracing.Tracer(s.cfg).Start(ctx, "TaskService.CreateTask")
+	defer span.End()
 	// handling assignee permission
 	if !common.IsAdmin(roles) &&
 		req.AssigneeID != nil &&
@@ -95,9 +98,11 @@ func (s *TaskService) CreateTask(ctx context.Context, userID int, roles []string
 }
 
 func (s *TaskService) GetByID(ctx context.Context, userID int, roles []string, id int) (*dto.TaskResponse, error) {
-	cacheKey := s.getCacheKey(id)
+	ctx, span := tracing.Tracer(s.cfg).Start(ctx, "TaskService.GetByID")
+	defer span.End()
 
 	// Cache
+	cacheKey := s.getCacheKey(id)
 	task, err := cache.Get[dto.TaskResponse](s.redis, cacheKey)
 	if err == nil {
 		if !common.IsAdmin(roles) && *task.AssigneeID != userID {

@@ -118,7 +118,7 @@ func (th TasksHandler) GetByID(c *gin.Context) {
 	userID := c.GetInt(constants.UserIdKey)
 	roles := c.GetStringSlice(constants.RolesKey)
 
-	task, err := th.taskService.GetByID(c, userID, roles, id)
+	task, err := th.taskService.GetByID(c.Request.Context(), userID, roles, id)
 	if err != nil {
 		c.AbortWithStatusJSON(
 			helpers.TranslateErrorToStatusCode(err),
@@ -177,7 +177,7 @@ func (th TasksHandler) GetByFilter(c *gin.Context) {
 	userID := c.GetInt(constants.UserIdKey)
 	roles := c.GetStringSlice(constants.RolesKey)
 
-	tasks, err := th.taskService.GetByFilter(c, userID, roles, req)
+	tasks, err := th.taskService.GetByFilter(c.Request.Context(), userID, roles, req)
 	if err != nil {
 		c.AbortWithStatusJSON(
 			helpers.TranslateErrorToStatusCode(err),
@@ -251,7 +251,7 @@ func (th TasksHandler) Update(c *gin.Context) {
 	roles := c.GetStringSlice(constants.RolesKey)
 
 	task, err := th.taskService.Update(
-		c,
+		c.Request.Context(),
 		userID,
 		roles,
 		id,
@@ -311,7 +311,7 @@ func (th TasksHandler) Delete(c *gin.Context) {
 	userID := c.GetInt(constants.UserIdKey)
 	roles := c.GetStringSlice(constants.RolesKey)
 
-	err = th.taskService.Delete(c, userID, roles, id)
+	err = th.taskService.Delete(c.Request.Context(), userID, roles, id)
 	if err != nil {
 		c.AbortWithStatusJSON(
 			helpers.TranslateErrorToStatusCode(err),

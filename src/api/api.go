@@ -18,6 +18,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
+	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 )
 
 func InitServer(cfg *config.Config) {
@@ -38,6 +39,7 @@ func InitServer(cfg *config.Config) {
 
 func registerMiddlewares(g *gin.Engine, cfg *config.Config) {
 	g.Use(
+		otelgin.Middleware(cfg.Jaeger.App),
 		middlewares.Prometheus(),
 		middlewares.LogRequestResponse(logging.GetLogger(cfg)),
 		middlewares.Cors(cfg.Server.AllowOrigins),

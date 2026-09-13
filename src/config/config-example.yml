@@ -24,6 +24,10 @@ redis:
   poolSize: 10
   poolTimeout: 15
   idleCheckFrequency: 500
+jaeger:
+  host: localhost
+  port: 4317
+  app: graph_taskmanager
 logger:
   appName: graph_taskmanager
   filePath: ../logs/

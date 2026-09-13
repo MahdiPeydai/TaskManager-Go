@@ -1,12 +1,15 @@
 package main
 
 import (
+	"context"
+
 	"github.com/mahdipeydai/taskmanager-go/api"
 	"github.com/mahdipeydai/taskmanager-go/config"
 	"github.com/mahdipeydai/taskmanager-go/data/cache"
 	"github.com/mahdipeydai/taskmanager-go/data/db"
 	migration "github.com/mahdipeydai/taskmanager-go/data/db/migration"
 	"github.com/mahdipeydai/taskmanager-go/pkg/logging"
+	"github.com/mahdipeydai/taskmanager-go/pkg/tracing"
 )
 
 var logger = logging.GetLogger(config.GetConfig())
@@ -23,7 +26,13 @@ var logger = logging.GetLogger(config.GetConfig())
 func main() {
 	cfg := config.GetConfig()
 
-	err := db.InitDb(cfg)
+	shutdownTracing, err := tracing.Init(context.Background(), cfg)
+	if err != nil {
+		logger.Fatal(logging.Opentelemetry, logging.StartUp, err.Error(), nil)
+	}
+	defer shutdownTracing(context.Background())
+
+	err = db.InitDb(cfg)
 	if err != nil {
 		logger.Fatal(logging.Postgres, logging.StartUp, err.Error(), nil)
 	}

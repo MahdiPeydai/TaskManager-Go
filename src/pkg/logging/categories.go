@@ -10,6 +10,7 @@ const (
 	Postgres        LogCategory = "Postgres"
 	Redis           LogCategory = "Redis"
 	Prometheus      LogCategory = "Prometheus"
+	Opentelemetry   LogCategory = "Opentelemetry"
 	RequestResponse LogCategory = "RequestResponse"
 )
 

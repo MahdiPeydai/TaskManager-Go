@@ -15,6 +15,7 @@ import (
 	"github.com/mahdipeydai/taskmanager-go/data/cache"
 	"github.com/mahdipeydai/taskmanager-go/data/models"
 	"github.com/mahdipeydai/taskmanager-go/pkg/logging"
+	"github.com/mahdipeydai/taskmanager-go/pkg/metrics"
 	"github.com/mahdipeydai/taskmanager-go/pkg/service_errors"
 	"gorm.io/gorm"
 )
@@ -40,6 +41,7 @@ func GetTaskService(database *gorm.DB, redis *redis.Client, cfg *config.Config, 
 }
 
 func (s *TaskService) CreateTask(ctx context.Context, userID int, roles []string, req *dto.CreateTaskRequest) (*dto.TaskResponse, error) {
+	// handling assignee permission
 	if !common.IsAdmin(roles) &&
 		req.AssigneeID != nil &&
 		*req.AssigneeID != userID {
@@ -53,6 +55,7 @@ func (s *TaskService) CreateTask(ctx context.Context, userID int, roles []string
 		assignee = &userID
 	}
 
+	// creation
 	task := &models.Task{
 		Title:       req.Title,
 		Description: req.Description,
@@ -76,12 +79,17 @@ func (s *TaskService) CreateTask(ctx context.Context, userID int, roles []string
 			logging.ErrorMessage: err.Error(),
 		}
 		s.logger.Error(logging.Postgres, logging.Insert, "Failed to create record", extras)
+		metrics.DbCall.WithLabelValues("task", "create", "failed").Inc()
 		return nil, err
 	}
 
 	if err := tx.Commit().Error; err != nil {
+		metrics.DbCall.WithLabelValues("task", "create", "failed").Inc()
 		return nil, err
 	}
+	// metrics
+	metrics.DbCall.WithLabelValues("task", "create", "success").Inc()
+	metrics.TaskCount.Inc()
 
 	return s.GetByID(ctx, userID, roles, task.Id)
 }
@@ -109,10 +117,12 @@ func (s *TaskService) GetByID(ctx context.Context, userID int, roles []string, i
 	}
 	err = query.First(&model).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
+		metrics.DbCall.WithLabelValues("task", "read", "failed").Inc()
 		return nil, service_errors.ServiceError{
 			EndUserMessage: service_errors.RecordNotFound,
 		}
 	}
+	metrics.DbCall.WithLabelValues("task", "read", "success").Inc()
 
 	if err != nil {
 		extras := map[logging.ExtraKey]interface{}{
@@ -163,8 +173,9 @@ func (s *TaskService) Update(ctx context.Context, userID int, roles []string, id
 	if err := tx.
 		Where("id = ? AND deleted_by IS NULL", id).
 		First(&task).Error; err != nil {
-
 		tx.Rollback()
+
+		metrics.DbCall.WithLabelValues("task", "select", "failed").Inc()
 
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, service_errors.ServiceError{
@@ -174,8 +185,9 @@ func (s *TaskService) Update(ctx context.Context, userID int, roles []string, id
 
 		return nil, err
 	}
+	metrics.DbCall.WithLabelValues("task", "select", "success").Inc()
 
-	// Default users can only update their own tasks.
+	// default users can only update their own tasks.
 	if !common.IsAdmin(roles) && !s.isTaskOwner(&task, userID) {
 		tx.Rollback()
 
@@ -220,6 +232,7 @@ func (s *TaskService) Update(ctx context.Context, userID int, roles []string, id
 		Updates(updateMap).Error; err != nil {
 
 		tx.Rollback()
+		metrics.DbCall.WithLabelValues("task", "update", "failed").Inc()
 
 		extras := map[logging.ExtraKey]interface{}{
 			logging.ErrorMessage: err.Error(),
@@ -236,10 +249,12 @@ func (s *TaskService) Update(ctx context.Context, userID int, roles []string, id
 	}
 
 	if err := tx.Commit().Error; err != nil {
+		metrics.DbCall.WithLabelValues("task", "update", "failed").Inc()
 		return nil, err
 	}
+	metrics.DbCall.WithLabelValues("task", "update", "success").Inc()
 
-	// Invalidate cached task.
+	// handling cache invalidation
 	if err := cache.Del(s.redis, s.getCacheKey(id)); err != nil {
 		extras := map[logging.ExtraKey]interface{}{
 			logging.ErrorMessage: err.Error(),
@@ -263,17 +278,21 @@ func (s *TaskService) Delete(ctx context.Context, userID int, roles []string, id
 		Where("id = ? AND deleted_by IS NULL", id).
 		First(&task).Error
 
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return service_errors.ServiceError{
-			EndUserMessage: service_errors.RecordNotFound,
-		}
-	}
-
 	if err != nil {
+		metrics.DbCall.WithLabelValues("task", "select", "failed").Inc()
+
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return service_errors.ServiceError{
+				EndUserMessage: service_errors.RecordNotFound,
+			}
+		}
+
 		return err
 	}
 
-	// Default users can only delete their own tasks.
+	metrics.DbCall.WithLabelValues("task", "select", "success").Inc()
+
+	// default users can only delete their own tasks.
 	if !common.IsAdmin(roles) && !s.isTaskOwner(&task, userID) {
 		return service_errors.ServiceError{
 			EndUserMessage: service_errors.PermissionDenied,
@@ -303,6 +322,7 @@ func (s *TaskService) Delete(ctx context.Context, userID int, roles []string, id
 
 	if result.Error != nil {
 		tx.Rollback()
+		metrics.DbCall.WithLabelValues("task", "delete", "failed").Inc()
 
 		extras := map[logging.ExtraKey]interface{}{
 			logging.ErrorMessage: result.Error.Error(),
@@ -320,6 +340,7 @@ func (s *TaskService) Delete(ctx context.Context, userID int, roles []string, id
 
 	if result.RowsAffected == 0 {
 		tx.Rollback()
+		metrics.DbCall.WithLabelValues("task", "delete", "failed").Inc()
 
 		return service_errors.ServiceError{
 			EndUserMessage: service_errors.RecordNotFound,
@@ -327,9 +348,13 @@ func (s *TaskService) Delete(ctx context.Context, userID int, roles []string, id
 	}
 
 	if err := tx.Commit().Error; err != nil {
+		metrics.DbCall.WithLabelValues("task", "delete", "failed").Inc()
 		return err
 	}
 
+	metrics.DbCall.WithLabelValues("task", "delete", "success").Inc()
+
+	// handling cache invalidation
 	if err := cache.Del(s.redis, s.getCacheKey(id)); err != nil {
 		extras := map[logging.ExtraKey]interface{}{
 			logging.ErrorMessage: err.Error(),
@@ -342,6 +367,9 @@ func (s *TaskService) Delete(ctx context.Context, userID int, roles []string, id
 			extras,
 		)
 	}
+
+	// metrics
+	metrics.TaskCount.Dec()
 
 	return nil
 }

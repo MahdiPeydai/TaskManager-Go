@@ -8,6 +8,7 @@ import (
 	"github.com/mahdipeydai/taskmanager-go/constants"
 	"github.com/mahdipeydai/taskmanager-go/data/models"
 	"github.com/mahdipeydai/taskmanager-go/pkg/logging"
+	"github.com/mahdipeydai/taskmanager-go/pkg/metrics"
 	"github.com/mahdipeydai/taskmanager-go/pkg/service_errors"
 	"gorm.io/gorm"
 )
@@ -85,8 +86,11 @@ func (s *UsersService) RefreshUserToken(req *dto.RefreshTokenRequest) (*dto.Toke
 		First(&u).Error
 
 	if err != nil {
+		metrics.DbCall.WithLabelValues("user", "select", "failed").Inc()
 		return nil, service_errors.ServiceError{EndUserMessage: service_errors.RecordNotFound}
 	}
+
+	metrics.DbCall.WithLabelValues("user", "select", "success").Inc()
 
 	return s.CreateUserToken(&u)
 }
@@ -142,6 +146,8 @@ func (s *UsersService) RegisterByUsername(req *dto.RegisterUserByUsernameRequest
 	err = tx.Create(&u).Error
 	if err != nil {
 		tx.Rollback()
+		metrics.DbCall.WithLabelValues("user", "create", "failed").Inc()
+
 		extras := map[logging.ExtraKey]interface{}{
 			logging.ErrorMessage: err.Error(),
 		}
@@ -149,9 +155,13 @@ func (s *UsersService) RegisterByUsername(req *dto.RegisterUserByUsernameRequest
 		return err
 	}
 
+	metrics.DbCall.WithLabelValues("user", "create", "success").Inc()
+
 	err = tx.Create(&models.UserRole{RoleId: roleId, UserId: u.Id}).Error
 	if err != nil {
 		tx.Rollback()
+		metrics.DbCall.WithLabelValues("user_role", "create", "failed").Inc()
+
 		extras := map[logging.ExtraKey]interface{}{
 			logging.ErrorMessage: err.Error(),
 		}
@@ -161,13 +171,17 @@ func (s *UsersService) RegisterByUsername(req *dto.RegisterUserByUsernameRequest
 
 	err = tx.Commit().Error
 	if err != nil {
-		tx.Rollback()
+		metrics.DbCall.WithLabelValues("user", "create", "failed").Inc()
+
 		extras := map[logging.ExtraKey]interface{}{
 			logging.ErrorMessage: err.Error(),
 		}
 		s.logger.Error(logging.General, logging.HashPassword, "Failed to create user", extras)
 		return err
 	}
+
+	metrics.DbCall.WithLabelValues("user_role", "create", "success").Inc()
+
 	return nil
 }
 
@@ -182,10 +196,13 @@ func (s *UsersService) LoginByUsername(req *dto.LoginByUsernameRequest) (*dto.To
 		First(&u).Error
 
 	if err != nil {
+		metrics.DbCall.WithLabelValues("user", "select", "failed").Inc()
 		return nil, service_errors.ServiceError{
 			EndUserMessage: service_errors.RecordNotFound,
 		}
 	}
+
+	metrics.DbCall.WithLabelValues("user", "select", "success").Inc()
 
 	if u.Password == nil || !common.ComparePasswords(*u.Password, req.Password) {
 		return nil, service_errors.ServiceError{
@@ -203,9 +220,14 @@ func (s *UsersService) existsByEmail(email string) (bool, error) {
 		Where("email = ?", email).
 		Find(&exists).
 		Error; err != nil {
+		metrics.DbCall.WithLabelValues("user", "select", "failed").Inc()
+
 		s.logger.Error(logging.Postgres, logging.Select, err.Error(), nil)
 		return false, err
 	}
+
+	metrics.DbCall.WithLabelValues("user", "select", "success").Inc()
+
 	return exists, nil
 }
 
@@ -216,9 +238,14 @@ func (s *UsersService) existsByUsername(username string) (bool, error) {
 		Where("username = ?", username).
 		Find(&exists).
 		Error; err != nil {
+		metrics.DbCall.WithLabelValues("user", "select", "failed").Inc()
+
 		s.logger.Error(logging.Postgres, logging.Select, err.Error(), nil)
 		return false, err
 	}
+
+	metrics.DbCall.WithLabelValues("user", "select", "success").Inc()
+
 	return exists, nil
 }
 
@@ -227,7 +254,10 @@ func (s *UsersService) getDefaultRole() (roleId int, err error) {
 		Select("id").
 		Where("name = ?", constants.DefaultRoleName).
 		First(&roleId).Error; err != nil {
+		metrics.DbCall.WithLabelValues("role", "select", "failed").Inc()
 		return 0, err
 	}
+	metrics.DbCall.WithLabelValues("role", "select", "success").Inc()
+
 	return roleId, nil
 }

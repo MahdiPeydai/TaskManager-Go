@@ -13,6 +13,9 @@ import (
 	"github.com/mahdipeydai/taskmanager-go/config"
 	"github.com/mahdipeydai/taskmanager-go/docs"
 	"github.com/mahdipeydai/taskmanager-go/pkg/logging"
+	"github.com/mahdipeydai/taskmanager-go/pkg/metrics"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
 )
@@ -25,6 +28,7 @@ func InitServer(cfg *config.Config) {
 	registerMiddlewares(engin, cfg)
 	registerRoutes(engin, cfg)
 	registerSwagger(engin, cfg)
+	registerPrometheus(engin)
 
 	err := engin.Run(fmt.Sprintf(":%d", cfg.Server.InternalPort))
 	if err != nil {
@@ -34,6 +38,7 @@ func InitServer(cfg *config.Config) {
 
 func registerMiddlewares(g *gin.Engine, cfg *config.Config) {
 	g.Use(
+		middlewares.Prometheus(),
 		middlewares.LogRequestResponse(logging.GetLogger(cfg)),
 		middlewares.Cors(cfg.Server.AllowOrigins),
 		middlewares.LimitByRequest(float64(cfg.Server.RateLimit)),
@@ -77,4 +82,37 @@ func registerCustomValidators(cfg *config.Config) {
 			logger.Fatal(logging.Internal, logging.StartUp, "Registering user password validator failed", extras)
 		}
 	}
+}
+
+func registerPrometheus(g *gin.Engine) {
+	err := prometheus.Register(metrics.DbCall)
+	if err != nil {
+		extras := map[logging.ExtraKey]interface{}{
+			logging.ErrorMessage: err.Error(),
+		}
+		logger.Fatal(logging.Prometheus, logging.StartUp, "Failed to register DB call counter", extras)
+	}
+	err = prometheus.Register(metrics.RequestsTotal)
+	if err != nil {
+		extras := map[logging.ExtraKey]interface{}{
+			logging.ErrorMessage: err.Error(),
+		}
+		logger.Fatal(logging.Prometheus, logging.StartUp, "Failed to register total http requests count", extras)
+	}
+	err = prometheus.Register(metrics.TaskCount)
+	if err != nil {
+		extras := map[logging.ExtraKey]interface{}{
+			logging.ErrorMessage: err.Error(),
+		}
+		logger.Fatal(logging.Prometheus, logging.StartUp, "Failed to register total task count", extras)
+	}
+	err = prometheus.Register(metrics.HttpDuration)
+	if err != nil {
+		extras := map[logging.ExtraKey]interface{}{
+			logging.ErrorMessage: err.Error(),
+		}
+		logger.Fatal(logging.Prometheus, logging.StartUp, "Failed to register HTTP duration histogram", extras)
+	}
+
+	g.GET("/metrics", gin.WrapH(promhttp.Handler()))
 }

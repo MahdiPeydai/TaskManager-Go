@@ -6,20 +6,21 @@ import (
 	"github.com/mahdipeydai/taskmanager-go/config"
 )
 
-func UserPasswordValidator(fld validator.FieldLevel) bool {
+func UserPasswordValidator(cfg *config.Config) validator.Func {
+	return func(fld validator.FieldLevel) bool {
+		value, ok := fld.Field().Interface().(string)
+		if !ok {
+			return false
+		}
 
-	value, ok := fld.Field().Interface().(string)
-	if !ok {
-		return false
+		return common.CheckPassword(
+			value,
+			cfg.Password.MinLength,
+			cfg.Password.MaxLength,
+			cfg.Password.IncludeChars,
+			cfg.Password.IncludeDigits,
+			cfg.Password.IncludeLowercase,
+			cfg.Password.IncludeUppercase,
+		)
 	}
-	cfg := config.GetConfig()
-	return common.CheckPassword(
-		value,
-		cfg.Password.MinLength,
-		cfg.Password.MaxLength,
-		cfg.Password.IncludeChars,
-		cfg.Password.IncludeDigits,
-		cfg.Password.IncludeLowercase,
-		cfg.Password.IncludeUppercase,
-	)
 }

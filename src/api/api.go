@@ -19,7 +19,7 @@ import (
 
 func InitServer(cfg *config.Config) {
 	engin := gin.New()
-	registerCustomValidators()
+	registerCustomValidators(cfg)
 	engin.Use(gin.Logger(), gin.CustomRecovery(middlewares.ErrorHandler))
 
 	registerMiddlewares(engin, cfg)
@@ -66,10 +66,10 @@ func registerSwagger(g *gin.Engine, cfg *config.Config) {
 	g.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 }
 
-func registerCustomValidators() {
+func registerCustomValidators(cfg *config.Config) {
 	val, ok := binding.Validator.Engine().(*validator.Validate)
 	if ok {
-		err := val.RegisterValidation("userPassword", validators.UserPasswordValidator, true)
+		err := val.RegisterValidation("userPassword", validators.UserPasswordValidator(cfg), true)
 		if err != nil {
 			extras := map[logging.ExtraKey]interface{}{
 				logging.ErrorMessage: err.Error(),

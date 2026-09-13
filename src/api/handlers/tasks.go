@@ -8,6 +8,7 @@ import (
 	"github.com/mahdipeydai/taskmanager-go/api/dto"
 	"github.com/mahdipeydai/taskmanager-go/api/helpers"
 	"github.com/mahdipeydai/taskmanager-go/config"
+	"github.com/mahdipeydai/taskmanager-go/constants"
 	"github.com/mahdipeydai/taskmanager-go/data/cache"
 	"github.com/mahdipeydai/taskmanager-go/data/db"
 	"github.com/mahdipeydai/taskmanager-go/pkg/logging"
@@ -59,7 +60,10 @@ func (th TasksHandler) Create(c *gin.Context) {
 		return
 	}
 
-	task, err := th.taskService.CreateTask(c, req)
+	userID := c.GetInt(constants.UserIdKey)
+	roles := c.GetStringSlice(constants.RolesKey)
+
+	task, err := th.taskService.CreateTask(c.Request.Context(), userID, roles, req)
 	if err != nil {
 		c.AbortWithStatusJSON(
 			helpers.TranslateErrorToStatusCode(err),
@@ -111,7 +115,10 @@ func (th TasksHandler) GetByID(c *gin.Context) {
 		return
 	}
 
-	task, err := th.taskService.GetByID(c, id)
+	userID := c.GetInt(constants.UserIdKey)
+	roles := c.GetStringSlice(constants.RolesKey)
+
+	task, err := th.taskService.GetByID(c, userID, roles, id)
 	if err != nil {
 		c.AbortWithStatusJSON(
 			helpers.TranslateErrorToStatusCode(err),
@@ -167,7 +174,10 @@ func (th TasksHandler) GetByFilter(c *gin.Context) {
 		return
 	}
 
-	tasks, err := th.taskService.GetByFilter(c, req)
+	userID := c.GetInt(constants.UserIdKey)
+	roles := c.GetStringSlice(constants.RolesKey)
+
+	tasks, err := th.taskService.GetByFilter(c, userID, roles, req)
 	if err != nil {
 		c.AbortWithStatusJSON(
 			helpers.TranslateErrorToStatusCode(err),
@@ -237,8 +247,13 @@ func (th TasksHandler) Update(c *gin.Context) {
 		return
 	}
 
+	userID := c.GetInt(constants.UserIdKey)
+	roles := c.GetStringSlice(constants.RolesKey)
+
 	task, err := th.taskService.Update(
 		c,
+		userID,
+		roles,
 		id,
 		req,
 	)
@@ -293,7 +308,10 @@ func (th TasksHandler) Delete(c *gin.Context) {
 		return
 	}
 
-	err = th.taskService.Delete(c, id)
+	userID := c.GetInt(constants.UserIdKey)
+	roles := c.GetStringSlice(constants.RolesKey)
+
+	err = th.taskService.Delete(c, userID, roles, id)
 	if err != nil {
 		c.AbortWithStatusJSON(
 			helpers.TranslateErrorToStatusCode(err),

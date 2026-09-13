@@ -10,8 +10,8 @@ import (
 
 	"github.com/go-redis/redis"
 	"github.com/mahdipeydai/taskmanager-go/api/dto"
+	"github.com/mahdipeydai/taskmanager-go/common"
 	"github.com/mahdipeydai/taskmanager-go/config"
-	"github.com/mahdipeydai/taskmanager-go/constants"
 	"github.com/mahdipeydai/taskmanager-go/data/cache"
 	"github.com/mahdipeydai/taskmanager-go/data/models"
 	"github.com/mahdipeydai/taskmanager-go/pkg/logging"
@@ -39,12 +39,25 @@ func GetTaskService(database *gorm.DB, redis *redis.Client, cfg *config.Config, 
 	return &TaskService{db: database, redis: redis, logger: logger, cfg: cfg}
 }
 
-func (s *TaskService) CreateTask(ctx context.Context, req *dto.CreateTaskRequest) (*dto.TaskResponse, error) {
+func (s *TaskService) CreateTask(ctx context.Context, userID int, roles []string, req *dto.CreateTaskRequest) (*dto.TaskResponse, error) {
+	if !common.IsAdmin(roles) &&
+		req.AssigneeID != nil &&
+		*req.AssigneeID != userID {
+		return nil, service_errors.ServiceError{
+			EndUserMessage: service_errors.AssigneePermissionDenied,
+		}
+	}
+
+	assignee := req.AssigneeID
+	if assignee == nil {
+		assignee = &userID
+	}
+
 	task := &models.Task{
 		Title:       req.Title,
 		Description: req.Description,
 		Status:      req.Status,
-		AssigneeID:  req.AssigneeID,
+		AssigneeID:  assignee,
 	}
 
 	if task.Status == "" {
@@ -70,23 +83,31 @@ func (s *TaskService) CreateTask(ctx context.Context, req *dto.CreateTaskRequest
 		return nil, err
 	}
 
-	return s.GetByID(ctx, task.Id)
+	return s.GetByID(ctx, userID, roles, task.Id)
 }
 
-func (s *TaskService) GetByID(ctx context.Context, id int) (*dto.TaskResponse, error) {
+func (s *TaskService) GetByID(ctx context.Context, userID int, roles []string, id int) (*dto.TaskResponse, error) {
 	cacheKey := s.getCacheKey(id)
 
 	// Cache
 	task, err := cache.Get[dto.TaskResponse](s.redis, cacheKey)
 	if err == nil {
+		if !common.IsAdmin(roles) && *task.AssigneeID != userID {
+			return nil, service_errors.ServiceError{
+				EndUserMessage: service_errors.RecordNotFound,
+			}
+		}
 		return &task, nil
 	}
 
 	var model models.Task
 
-	err = s.db.WithContext(ctx).
-		Where("id = ? AND deleted_by is null", id).
-		First(&model).Error
+	query := s.db.WithContext(ctx).
+		Where("id = ? AND deleted_by IS NULL", id)
+	if !common.IsAdmin(roles) {
+		query = query.Where("assignee_id = ?", userID)
+	}
+	err = query.First(&model).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, service_errors.ServiceError{
 			EndUserMessage: service_errors.RecordNotFound,
@@ -131,7 +152,38 @@ func (s *TaskService) GetByID(ctx context.Context, id int) (*dto.TaskResponse, e
 	return response, nil
 }
 
-func (s *TaskService) Update(ctx context.Context, id int, req *dto.UpdateTaskRequest) (*dto.TaskResponse, error) {
+func (s *TaskService) Update(ctx context.Context, userID int, roles []string, id int, req *dto.UpdateTaskRequest) (*dto.TaskResponse, error) {
+	tx := s.db.WithContext(ctx).Begin()
+	if tx.Error != nil {
+		return nil, tx.Error
+	}
+
+	var task models.Task
+
+	if err := tx.
+		Where("id = ? AND deleted_by IS NULL", id).
+		First(&task).Error; err != nil {
+
+		tx.Rollback()
+
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, service_errors.ServiceError{
+				EndUserMessage: service_errors.RecordNotFound,
+			}
+		}
+
+		return nil, err
+	}
+
+	// Default users can only update their own tasks.
+	if !common.IsAdmin(roles) && !s.isTaskOwner(&task, userID) {
+		tx.Rollback()
+
+		return nil, service_errors.ServiceError{
+			EndUserMessage: service_errors.PermissionDenied,
+		}
+	}
+
 	updateMap := make(map[string]interface{})
 
 	if req.Title != nil {
@@ -146,34 +198,21 @@ func (s *TaskService) Update(ctx context.Context, id int, req *dto.UpdateTaskReq
 		updateMap["status"] = *req.Status
 	}
 
+	// only admin can change the assignee.
 	if req.AssigneeID != nil {
+		if !common.IsAdmin(roles) {
+			tx.Rollback()
+
+			return nil, service_errors.ServiceError{
+				EndUserMessage: service_errors.PermissionDenied,
+			}
+		}
+
 		updateMap["assignee_id"] = *req.AssigneeID
 	}
 
 	updateMap["updated_at"] = time.Now().UTC()
-	updateMap["updated_by"] = int64(ctx.Value(constants.UserIdKey).(float64))
-
-	tx := s.db.WithContext(ctx).Begin()
-	if tx.Error != nil {
-		return nil, tx.Error
-	}
-
-	var task models.Task
-
-	if err := tx.
-		Where("id = ? AND deleted_by is null", id).
-		First(&task).Error; err != nil {
-
-		tx.Rollback()
-
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, service_errors.ServiceError{
-				EndUserMessage: service_errors.RecordNotFound,
-			}
-		}
-
-		return nil, err
-	}
+	updateMap["updated_by"] = userID
 
 	if err := tx.
 		Model(&models.Task{}).
@@ -214,14 +253,14 @@ func (s *TaskService) Update(ctx context.Context, id int, req *dto.UpdateTaskReq
 		)
 	}
 
-	return s.GetByID(ctx, id)
+	return s.GetByID(ctx, userID, roles, id)
 }
 
-func (s *TaskService) Delete(ctx context.Context, id int) error {
+func (s *TaskService) Delete(ctx context.Context, userID int, roles []string, id int) error {
 	var task models.Task
 
 	err := s.db.WithContext(ctx).
-		Where("id = ?", id).
+		Where("id = ? AND deleted_by IS NULL", id).
 		First(&task).Error
 
 	if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -234,29 +273,59 @@ func (s *TaskService) Delete(ctx context.Context, id int) error {
 		return err
 	}
 
-	deleteMap := map[string]interface{}{
-		"deleted_by": sql.NullInt64{Int64: int64(ctx.Value(constants.UserIdKey).(float64)), Valid: true},
-		"deleted_at": time.Now().UTC(),
+	// Default users can only delete their own tasks.
+	if !common.IsAdmin(roles) && !s.isTaskOwner(&task, userID) {
+		return service_errors.ServiceError{
+			EndUserMessage: service_errors.PermissionDenied,
+		}
 	}
-	deleteMap["updated_at"] = time.Now().UTC()
-	deleteMap["updated_by"] = int64(ctx.Value(constants.UserIdKey).(float64))
+
+	now := time.Now().UTC()
+	deleteMap := map[string]interface{}{
+		"deleted_by": sql.NullInt64{
+			Int64: int64(userID),
+			Valid: true,
+		},
+		"deleted_at": now,
+		"updated_at": now,
+		"updated_by": userID,
+	}
 
 	tx := s.db.WithContext(ctx).Begin()
 	if tx.Error != nil {
 		return tx.Error
 	}
 
-	model := new(models.Task)
-	count := tx.Model(model).Where("id = ? AND deleted_by is null", id).Updates(deleteMap).RowsAffected
-	if count == 0 {
+	result := tx.
+		Model(&models.Task{}).
+		Where("id = ? AND deleted_by IS NULL", id).
+		Updates(deleteMap)
+
+	if result.Error != nil {
 		tx.Rollback()
-		err := service_errors.ServiceError{EndUserMessage: service_errors.RecordNotFound}
+
 		extras := map[logging.ExtraKey]interface{}{
-			logging.ErrorMessage: err.Error(),
+			logging.ErrorMessage: result.Error.Error(),
 		}
-		s.logger.Error(logging.Postgres, logging.Update, "Failed to delete record", extras)
-		return err
+
+		s.logger.Error(
+			logging.Postgres,
+			logging.Update,
+			"Failed to delete record",
+			extras,
+		)
+
+		return result.Error
 	}
+
+	if result.RowsAffected == 0 {
+		tx.Rollback()
+
+		return service_errors.ServiceError{
+			EndUserMessage: service_errors.RecordNotFound,
+		}
+	}
+
 	if err := tx.Commit().Error; err != nil {
 		return err
 	}
@@ -277,7 +346,29 @@ func (s *TaskService) Delete(ctx context.Context, id int) error {
 	return nil
 }
 
-func (s *TaskService) GetByFilter(ctx context.Context, req *dto.TaskListRequest) (*dto.TaskListResponse, error) {
+func (s *TaskService) GetByFilter(ctx context.Context, userID int, roles []string, req *dto.TaskListRequest) (*dto.TaskListResponse, error) {
+	if !common.IsAdmin(roles) && req.AssigneeID != nil {
+		return nil, service_errors.ServiceError{
+			EndUserMessage: service_errors.PermissionDenied,
+		}
+	}
+
+	query := s.db.WithContext(ctx).
+		Model(&models.Task{}).
+		Where("deleted_by IS NULL")
+
+	if req.Status != nil {
+		query = query.Where("status = ?", *req.Status)
+	}
+
+	if common.IsAdmin(roles) {
+		if req.AssigneeID != nil {
+			query = query.Where("assignee_id = ?", *req.AssigneeID)
+		}
+	} else {
+		query = query.Where("assignee_id = ?", userID)
+	}
+
 	page := req.Page
 	if page < 1 {
 		page = defaultPage
@@ -290,17 +381,6 @@ func (s *TaskService) GetByFilter(ctx context.Context, req *dto.TaskListRequest)
 
 	if pageSize > maxPageSize {
 		pageSize = maxPageSize
-	}
-
-	query := s.db.WithContext(ctx).
-		Model(&models.Task{})
-
-	if req.Status != nil {
-		query = query.Where("status = ?", *req.Status)
-	}
-
-	if req.AssigneeID != nil {
-		query = query.Where("assignee_id = ?", *req.AssigneeID)
 	}
 
 	var totalRows int64
@@ -354,4 +434,8 @@ func (s *TaskService) toResponse(task *models.Task) *dto.TaskResponse {
 
 func (s *TaskService) getCacheKey(id int) string {
 	return taskCacheKeyPrefix + strconv.Itoa(id)
+}
+
+func (s *TaskService) isTaskOwner(task *models.Task, userID int) bool {
+	return task.AssigneeID != nil && *task.AssigneeID == userID
 }

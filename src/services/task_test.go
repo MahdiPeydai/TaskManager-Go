@@ -20,6 +20,11 @@ import (
 	"gorm.io/gorm"
 )
 
+const testAdminUserID = 99
+
+var testAdminRoles = []string{"admin"}
+var testUserRoles = []string{"default"}
+
 func testTaskService(t *testing.T) (*TaskService, sqlmock.Sqlmock, *miniredis.Miniredis) {
 	t.Helper()
 
@@ -72,8 +77,7 @@ func TestTaskService_CreateTask_Success(t *testing.T) {
 
 	mock.ExpectQuery(
 		regexp.QuoteMeta(
-			`SELECT * FROM "tasks" WHERE (id = $1 AND deleted_by is null) AND "tasks"."deleted_at" IS NULL ORDER BY "tasks"."id" LIMIT $2`,
-		),
+			`SELECT * FROM "tasks" WHERE (id = $1 AND deleted_by IS NULL) AND "tasks"."deleted_at" IS NULL ORDER BY "tasks"."id" LIMIT $2`),
 	).
 		WithArgs(10, 1).
 		WillReturnRows(
@@ -95,7 +99,7 @@ func TestTaskService_CreateTask_Success(t *testing.T) {
 				),
 		)
 
-	result, err := service.CreateTask(ctx, req)
+	result, err := service.CreateTask(ctx, testAdminUserID, testAdminRoles, req)
 
 	require.NoError(t, err)
 	require.NotNil(t, result)
@@ -107,6 +111,115 @@ func TestTaskService_CreateTask_Success(t *testing.T) {
 
 	require.NoError(t, mock.ExpectationsWereMet())
 	assert.True(t, redisServer.Exists("task:10"))
+}
+
+func TestTaskService_CreateTask_Admin_CanAssignOtherUser(t *testing.T) {
+	service, mock, redisServer := testTaskService(t)
+
+	assigneeID := 20
+	req := &dto.CreateTaskRequest{
+		Title:      "Assigned task",
+		AssigneeID: &assigneeID,
+	}
+
+	mock.ExpectBegin()
+	mock.ExpectQuery(`INSERT INTO "tasks"`).
+		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(10))
+	mock.ExpectCommit()
+	mock.ExpectQuery(regexp.QuoteMeta(
+		`SELECT * FROM "tasks" WHERE (id = $1 AND deleted_by IS NULL) AND "tasks"."deleted_at" IS NULL ORDER BY "tasks"."id" LIMIT $2`,
+	)).
+		WithArgs(10, 1).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "title", "description", "status", "assignee_id", "deleted_at"}).
+			AddRow(10, "Assigned task", "", models.TaskStatusPending, assigneeID, nil))
+
+	result, err := service.CreateTask(context.Background(), testAdminUserID, testAdminRoles, req)
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.NotNil(t, result.AssigneeID)
+	assert.Equal(t, assigneeID, *result.AssigneeID)
+	require.NoError(t, mock.ExpectationsWereMet())
+	assert.True(t, redisServer.Exists("task:10"))
+}
+
+func TestTaskService_CreateTask_DefaultUser_AssignsToSelf(t *testing.T) {
+	service, mock, redisServer := testTaskService(t)
+
+	userID := 10
+	req := &dto.CreateTaskRequest{
+		Title:       "My task",
+		Description: "My description",
+	}
+
+	mock.ExpectBegin()
+	mock.ExpectQuery(`INSERT INTO "tasks"`).
+		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(10))
+	mock.ExpectCommit()
+
+	mock.ExpectQuery(
+		regexp.QuoteMeta(
+			`SELECT * FROM "tasks" WHERE (id = $1 AND deleted_by IS NULL) AND assignee_id = $2 AND "tasks"."deleted_at" IS NULL ORDER BY "tasks"."id" LIMIT $3`,
+		),
+	).
+		WithArgs(10, userID, 1).
+		WillReturnRows(
+			sqlmock.NewRows([]string{"id", "title", "description", "status", "assignee_id", "deleted_at"}).
+				AddRow(10, "My task", "My description", models.TaskStatusPending, userID, nil),
+		)
+
+	result, err := service.CreateTask(context.Background(), userID, testUserRoles, req)
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.NotNil(t, result.AssigneeID)
+	assert.Equal(t, userID, *result.AssigneeID)
+	require.NoError(t, mock.ExpectationsWereMet())
+	assert.True(t, redisServer.Exists("task:10"))
+}
+
+func TestTaskService_CreateTask_DefaultUser_CannotAssignOtherUser(t *testing.T) {
+	service, mock, _ := testTaskService(t)
+
+	assigneeID := 20
+	result, err := service.CreateTask(
+		context.Background(),
+		10,
+		testUserRoles,
+		&dto.CreateTaskRequest{Title: "Task", AssigneeID: &assigneeID},
+	)
+
+	require.Error(t, err)
+	assert.Nil(t, result)
+	var serviceErr service_errors.ServiceError
+	require.ErrorAs(t, err, &serviceErr)
+	assert.Equal(t, service_errors.AssigneePermissionDenied, serviceErr.EndUserMessage)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestTaskService_CreateTask_DefaultUser_CanAssignSelf(t *testing.T) {
+	service, mock, _ := testTaskService(t)
+
+	userID := 10
+	req := &dto.CreateTaskRequest{Title: "My task", AssigneeID: &userID}
+
+	mock.ExpectBegin()
+	mock.ExpectQuery(`INSERT INTO "tasks"`).
+		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(10))
+	mock.ExpectCommit()
+	mock.ExpectQuery(regexp.QuoteMeta(
+		`SELECT * FROM "tasks" WHERE (id = $1 AND deleted_by IS NULL) AND assignee_id = $2 AND "tasks"."deleted_at" IS NULL ORDER BY "tasks"."id" LIMIT $3`,
+	)).
+		WithArgs(10, userID, 1).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "title", "description", "status", "assignee_id", "deleted_at"}).
+			AddRow(10, "My task", "", models.TaskStatusPending, userID, nil))
+
+	result, err := service.CreateTask(context.Background(), userID, testUserRoles, req)
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.Equal(t, userID, *result.AssigneeID)
+	require.NoError(t, mock.ExpectationsWereMet())
 }
 
 func TestTaskService_CreateTask_CreateFailure(t *testing.T) {
@@ -125,6 +238,8 @@ func TestTaskService_CreateTask_CreateFailure(t *testing.T) {
 
 	result, err := service.CreateTask(
 		ctx,
+		testAdminUserID,
+		testAdminRoles,
 		&dto.CreateTaskRequest{
 			Title: "Test task",
 		},
@@ -157,6 +272,8 @@ func TestTaskService_CreateTask_CommitFailure(t *testing.T) {
 
 	result, err := service.CreateTask(
 		ctx,
+		testAdminUserID,
+		testAdminRoles,
 		&dto.CreateTaskRequest{
 			Title: "Test task",
 		},
@@ -179,6 +296,8 @@ func TestTaskService_CreateTask_BeginFailure(t *testing.T) {
 
 	result, err := service.CreateTask(
 		context.Background(),
+		testAdminUserID,
+		testAdminRoles,
 		&dto.CreateTaskRequest{
 			Title: "Test task",
 		},
@@ -191,12 +310,12 @@ func TestTaskService_CreateTask_BeginFailure(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
-func TestTaskService_GetByID_CacheMiss(t *testing.T) {
+func TestTaskService_GetByID_CacheMiss_ByAdmin(t *testing.T) {
 	service, mock, redisServer := testTaskService(t)
 
 	mock.ExpectQuery(
 		regexp.QuoteMeta(
-			`SELECT * FROM "tasks" WHERE (id = $1 AND deleted_by is null) AND "tasks"."deleted_at" IS NULL ORDER BY "tasks"."id" LIMIT $2`,
+			`SELECT * FROM "tasks" WHERE (id = $1 AND deleted_by IS NULL) AND "tasks"."deleted_at" IS NULL ORDER BY "tasks"."id" LIMIT $2`,
 		),
 	).
 		WithArgs(10, 1).
@@ -219,7 +338,7 @@ func TestTaskService_GetByID_CacheMiss(t *testing.T) {
 				),
 		)
 
-	result, err := service.GetByID(context.Background(), 10)
+	result, err := service.GetByID(context.Background(), testAdminUserID, testAdminRoles, 10)
 
 	require.NoError(t, err)
 	require.NotNil(t, result)
@@ -233,18 +352,18 @@ func TestTaskService_GetByID_CacheMiss(t *testing.T) {
 	assert.True(t, redisServer.Exists("task:10"))
 }
 
-func TestTaskService_GetByID_NotFound(t *testing.T) {
+func TestTaskService_GetByID_NotFound_ByAdmin(t *testing.T) {
 	service, mock, _ := testTaskService(t)
 
 	query := regexp.QuoteMeta(
-		`SELECT * FROM "tasks" WHERE (id = $1 AND deleted_by is null) AND "tasks"."deleted_at" IS NULL ORDER BY "tasks"."id" LIMIT $2`,
+		`SELECT * FROM "tasks" WHERE (id = $1 AND deleted_by IS NULL) AND "tasks"."deleted_at" IS NULL ORDER BY "tasks"."id" LIMIT $2`,
 	)
 
 	mock.ExpectQuery(query).
 		WithArgs(10, 1).
 		WillReturnError(gorm.ErrRecordNotFound)
 
-	result, err := service.GetByID(context.Background(), 10)
+	result, err := service.GetByID(context.Background(), testAdminUserID, testAdminRoles, 10)
 
 	require.Error(t, err)
 	assert.Nil(t, result)
@@ -260,20 +379,54 @@ func TestTaskService_GetByID_NotFound(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+func TestTaskService_GetByID_DefaultUser_CannotGetOtherUserTask(t *testing.T) {
+	service, mock, _ := testTaskService(t)
+
+	mock.ExpectQuery(regexp.QuoteMeta(
+		`SELECT * FROM "tasks" WHERE (id = $1 AND deleted_by IS NULL) AND assignee_id = $2 AND "tasks"."deleted_at" IS NULL ORDER BY "tasks"."id" LIMIT $3`,
+	)).
+		WithArgs(10, 10, 1).
+		WillReturnError(gorm.ErrRecordNotFound)
+
+	result, err := service.GetByID(context.Background(), 10, testUserRoles, 10)
+
+	require.Error(t, err)
+	assert.Nil(t, result)
+	var serviceErr service_errors.ServiceError
+	require.ErrorAs(t, err, &serviceErr)
+	assert.Equal(t, service_errors.RecordNotFound, serviceErr.EndUserMessage)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestTaskService_GetByID_CachedTask_DeniesOtherUser(t *testing.T) {
+	service, mock, redisServer := testTaskService(t)
+
+	require.NoError(t, redisServer.Set("task:10", `{"id":10,"title":"Other task","assignee_id":20}`))
+
+	result, err := service.GetByID(context.Background(), 10, testUserRoles, 10)
+
+	require.Error(t, err)
+	assert.Nil(t, result)
+	var serviceErr service_errors.ServiceError
+	require.ErrorAs(t, err, &serviceErr)
+	assert.Equal(t, service_errors.RecordNotFound, serviceErr.EndUserMessage)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestTaskService_GetByID_DatabaseError(t *testing.T) {
 	service, mock, _ := testTaskService(t)
 
 	dbError := errors.New("database unavailable")
 
 	query := regexp.QuoteMeta(
-		`SELECT * FROM "tasks" WHERE (id = $1 AND deleted_by is null) AND "tasks"."deleted_at" IS NULL ORDER BY "tasks"."id" LIMIT $2`,
+		`SELECT * FROM "tasks" WHERE (id = $1 AND deleted_by IS NULL) AND "tasks"."deleted_at" IS NULL ORDER BY "tasks"."id" LIMIT $2`,
 	)
 
 	mock.ExpectQuery(query).
 		WithArgs(10, 1).
 		WillReturnError(dbError)
 
-	result, err := service.GetByID(context.Background(), 10)
+	result, err := service.GetByID(context.Background(), testAdminUserID, testAdminRoles, 10)
 
 	require.Error(t, err)
 	assert.ErrorIs(t, err, dbError)
@@ -285,11 +438,7 @@ func TestTaskService_GetByID_DatabaseError(t *testing.T) {
 func TestTaskService_Update_Success(t *testing.T) {
 	service, mock, _ := testTaskService(t)
 
-	ctx := context.WithValue(
-		context.Background(),
-		constants.UserIdKey,
-		float64(99),
-	)
+	ctx := context.Background()
 
 	title := "Updated task"
 	description := "Updated description"
@@ -299,7 +448,7 @@ func TestTaskService_Update_Success(t *testing.T) {
 	mock.ExpectBegin()
 
 	query := regexp.QuoteMeta(
-		`SELECT * FROM "tasks" WHERE (id = $1 AND deleted_by is null) AND "tasks"."deleted_at" IS NULL ORDER BY "tasks"."id" LIMIT $2`,
+		`SELECT * FROM "tasks" WHERE (id = $1 AND deleted_by IS NULL) AND "tasks"."deleted_at" IS NULL ORDER BY "tasks"."id" LIMIT $2`,
 	)
 
 	mock.ExpectQuery(query).
@@ -331,7 +480,7 @@ func TestTaskService_Update_Success(t *testing.T) {
 
 	// GetByID after cache invalidation.
 	query = regexp.QuoteMeta(
-		`SELECT * FROM "tasks" WHERE (id = $1 AND deleted_by is null) AND "tasks"."deleted_at" IS NULL ORDER BY "tasks"."id" LIMIT $2`,
+		`SELECT * FROM "tasks" WHERE (id = $1 AND deleted_by IS NULL) AND "tasks"."deleted_at" IS NULL ORDER BY "tasks"."id" LIMIT $2`,
 	)
 
 	mock.ExpectQuery(query).
@@ -354,6 +503,8 @@ func TestTaskService_Update_Success(t *testing.T) {
 
 	result, err := service.Update(
 		ctx,
+		testAdminUserID,
+		testAdminRoles,
 		10,
 		&dto.UpdateTaskRequest{
 			Title:       &title,
@@ -378,16 +529,12 @@ func TestTaskService_Update_Success(t *testing.T) {
 func TestTaskService_Update_NotFound(t *testing.T) {
 	service, mock, _ := testTaskService(t)
 
-	ctx := context.WithValue(
-		context.Background(),
-		constants.UserIdKey,
-		float64(99),
-	)
+	ctx := context.Background()
 
 	mock.ExpectBegin()
 
 	query := regexp.QuoteMeta(
-		`SELECT * FROM "tasks" WHERE (id = $1 AND deleted_by is null) AND "tasks"."deleted_at" IS NULL ORDER BY "tasks"."id" LIMIT $2`,
+		`SELECT * FROM "tasks" WHERE (id = $1 AND deleted_by IS NULL) AND "tasks"."deleted_at" IS NULL ORDER BY "tasks"."id" LIMIT $2`,
 	)
 
 	mock.ExpectQuery(query).
@@ -398,6 +545,8 @@ func TestTaskService_Update_NotFound(t *testing.T) {
 
 	result, err := service.Update(
 		ctx,
+		testAdminUserID,
+		testAdminRoles,
 		10,
 		&dto.UpdateTaskRequest{},
 	)
@@ -420,18 +569,14 @@ func TestTaskService_Update_NotFound(t *testing.T) {
 func TestTaskService_Update_SelectError(t *testing.T) {
 	service, mock, _ := testTaskService(t)
 
-	ctx := context.WithValue(
-		context.Background(),
-		constants.UserIdKey,
-		float64(99),
-	)
+	ctx := context.Background()
 
 	dbError := errors.New("select failed")
 
 	mock.ExpectBegin()
 
 	query := regexp.QuoteMeta(
-		`SELECT * FROM "tasks" WHERE (id = $1 AND deleted_by is null) AND "tasks"."deleted_at" IS NULL ORDER BY "tasks"."id" LIMIT $2`,
+		`SELECT * FROM "tasks" WHERE (id = $1 AND deleted_by IS NULL) AND "tasks"."deleted_at" IS NULL ORDER BY "tasks"."id" LIMIT $2`,
 	)
 
 	mock.ExpectQuery(query).
@@ -442,6 +587,8 @@ func TestTaskService_Update_SelectError(t *testing.T) {
 
 	result, err := service.Update(
 		ctx,
+		testAdminUserID,
+		testAdminRoles,
 		10,
 		&dto.UpdateTaskRequest{},
 	)
@@ -456,11 +603,7 @@ func TestTaskService_Update_SelectError(t *testing.T) {
 func TestTaskService_Update_UpdateError(t *testing.T) {
 	service, mock, _ := testTaskService(t)
 
-	ctx := context.WithValue(
-		context.Background(),
-		constants.UserIdKey,
-		float64(99),
-	)
+	ctx := context.Background()
 
 	title := "Updated"
 	dbError := errors.New("update failed")
@@ -468,7 +611,7 @@ func TestTaskService_Update_UpdateError(t *testing.T) {
 	mock.ExpectBegin()
 
 	query := regexp.QuoteMeta(
-		`SELECT * FROM "tasks" WHERE (id = $1 AND deleted_by is null) AND "tasks"."deleted_at" IS NULL ORDER BY "tasks"."id" LIMIT $2`,
+		`SELECT * FROM "tasks" WHERE (id = $1 AND deleted_by IS NULL) AND "tasks"."deleted_at" IS NULL ORDER BY "tasks"."id" LIMIT $2`,
 	)
 
 	mock.ExpectQuery(query).
@@ -490,6 +633,8 @@ func TestTaskService_Update_UpdateError(t *testing.T) {
 
 	result, err := service.Update(
 		ctx,
+		testAdminUserID,
+		testAdminRoles,
 		10,
 		&dto.UpdateTaskRequest{
 			Title: &title,
@@ -503,11 +648,80 @@ func TestTaskService_Update_UpdateError(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+func TestTaskService_Update_DefaultUser_OwnTask(t *testing.T) {
+	service, mock, _ := testTaskService(t)
+
+	title := "Updated"
+	mock.ExpectBegin()
+	mock.ExpectQuery(regexp.QuoteMeta(
+		`SELECT * FROM "tasks" WHERE (id = $1 AND deleted_by IS NULL) AND "tasks"."deleted_at" IS NULL ORDER BY "tasks"."id" LIMIT $2`,
+	)).
+		WithArgs(10, 1).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "title", "assignee_id"}).AddRow(10, "Old", 10))
+	mock.ExpectExec(`UPDATE "tasks"`).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+	mock.ExpectQuery(regexp.QuoteMeta(
+		`SELECT * FROM "tasks" WHERE (id = $1 AND deleted_by IS NULL) AND assignee_id = $2 AND "tasks"."deleted_at" IS NULL ORDER BY "tasks"."id" LIMIT $3`,
+	)).
+		WithArgs(10, 10, 1).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "title", "assignee_id"}).AddRow(10, title, 10))
+
+	result, err := service.Update(context.Background(), 10, testUserRoles, 10, &dto.UpdateTaskRequest{Title: &title})
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.Equal(t, title, result.Title)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestTaskService_Update_DefaultUser_CannotUpdateOtherUserTask(t *testing.T) {
+	service, mock, _ := testTaskService(t)
+
+	mock.ExpectBegin()
+	mock.ExpectQuery(regexp.QuoteMeta(
+		`SELECT * FROM "tasks" WHERE (id = $1 AND deleted_by IS NULL) AND "tasks"."deleted_at" IS NULL ORDER BY "tasks"."id" LIMIT $2`,
+	)).
+		WithArgs(10, 1).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "title", "assignee_id"}).AddRow(10, "Task", 20))
+	mock.ExpectRollback()
+
+	result, err := service.Update(context.Background(), 10, testUserRoles, 10, &dto.UpdateTaskRequest{})
+
+	require.Error(t, err)
+	assert.Nil(t, result)
+	var serviceErr service_errors.ServiceError
+	require.ErrorAs(t, err, &serviceErr)
+	assert.Equal(t, service_errors.PermissionDenied, serviceErr.EndUserMessage)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestTaskService_Update_DefaultUser_CannotChangeAssignee(t *testing.T) {
+	service, mock, _ := testTaskService(t)
+
+	assigneeID := 20
+	mock.ExpectBegin()
+	mock.ExpectQuery(regexp.QuoteMeta(
+		`SELECT * FROM "tasks" WHERE (id = $1 AND deleted_by IS NULL) AND "tasks"."deleted_at" IS NULL ORDER BY "tasks"."id" LIMIT $2`,
+	)).
+		WithArgs(10, 1).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "title", "assignee_id"}).AddRow(10, "Task", 10))
+	mock.ExpectRollback()
+
+	result, err := service.Update(context.Background(), 10, testUserRoles, 10, &dto.UpdateTaskRequest{AssigneeID: &assigneeID})
+
+	require.Error(t, err)
+	assert.Nil(t, result)
+	var serviceErr service_errors.ServiceError
+	require.ErrorAs(t, err, &serviceErr)
+	assert.Equal(t, service_errors.PermissionDenied, serviceErr.EndUserMessage)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestTaskService_Delete_NotFound(t *testing.T) {
 	service, mock, _ := testTaskService(t)
 
 	query := regexp.QuoteMeta(
-		`SELECT * FROM "tasks" WHERE id = $1 AND "tasks"."deleted_at" IS NULL ORDER BY "tasks"."id" LIMIT $2`,
+		`SELECT * FROM "tasks" WHERE (id = $1 AND deleted_by IS NULL) AND "tasks"."deleted_at" IS NULL ORDER BY "tasks"."id" LIMIT $2`,
 	)
 
 	mock.ExpectQuery(query).
@@ -520,6 +734,8 @@ func TestTaskService_Delete_NotFound(t *testing.T) {
 			constants.UserIdKey,
 			float64(99),
 		),
+		testAdminUserID,
+		testAdminRoles,
 		10,
 	)
 
@@ -543,17 +759,17 @@ func TestTaskService_Delete_SelectError(t *testing.T) {
 	dbError := errors.New("database failed")
 
 	mock.ExpectQuery(
-		`SELECT \* FROM "tasks" WHERE id = \$1`,
+		regexp.QuoteMeta(
+			`SELECT * FROM "tasks" WHERE (id = $1 AND deleted_by IS NULL) AND "tasks"."deleted_at" IS NULL ORDER BY "tasks"."id" LIMIT $2`,
+		),
 	).
 		WithArgs(10, 1).
 		WillReturnError(dbError)
 
 	err := service.Delete(
-		context.WithValue(
-			context.Background(),
-			constants.UserIdKey,
-			float64(99),
-		),
+		context.Background(),
+		testAdminUserID,
+		testAdminRoles,
 		10,
 	)
 
@@ -574,7 +790,9 @@ func TestTaskService_Delete_Success(t *testing.T) {
 
 	// Initial existence check.
 	mock.ExpectQuery(
-		`SELECT \* FROM "tasks" WHERE id = \$1`,
+		regexp.QuoteMeta(
+			`SELECT * FROM "tasks" WHERE (id = $1 AND deleted_by IS NULL) AND "tasks"."deleted_at" IS NULL ORDER BY "tasks"."id" LIMIT $2`,
+		),
 	).
 		WithArgs(10, 1).
 		WillReturnRows(
@@ -602,7 +820,7 @@ func TestTaskService_Delete_Success(t *testing.T) {
 		redisServer.Set("task:10", `{"id":10}`),
 	)
 
-	err := service.Delete(ctx, 10)
+	err := service.Delete(ctx, testAdminUserID, testAdminRoles, 10)
 
 	require.NoError(t, err)
 
@@ -620,7 +838,9 @@ func TestTaskService_Delete_NoRowsAffected(t *testing.T) {
 	)
 
 	mock.ExpectQuery(
-		`SELECT \* FROM "tasks" WHERE id = \$1`,
+		regexp.QuoteMeta(
+			`SELECT * FROM "tasks" WHERE (id = $1 AND deleted_by IS NULL) AND "tasks"."deleted_at" IS NULL ORDER BY "tasks"."id" LIMIT $2`,
+		),
 	).
 		WithArgs(10, 1).
 		WillReturnRows(
@@ -638,7 +858,7 @@ func TestTaskService_Delete_NoRowsAffected(t *testing.T) {
 
 	mock.ExpectRollback()
 
-	err := service.Delete(ctx, 10)
+	err := service.Delete(ctx, testAdminUserID, testAdminRoles, 10)
 
 	require.Error(t, err)
 
@@ -654,7 +874,49 @@ func TestTaskService_Delete_NoRowsAffected(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
-func TestTaskService_GetByFilter_DefaultPagination(t *testing.T) {
+func TestTaskService_Delete_DefaultUser_CannotDeleteOtherUserTask(t *testing.T) {
+	service, mock, _ := testTaskService(t)
+
+	mock.ExpectQuery(
+		regexp.QuoteMeta(
+			`SELECT * FROM "tasks" WHERE (id = $1 AND deleted_by IS NULL) AND "tasks"."deleted_at" IS NULL ORDER BY "tasks"."id" LIMIT $2`,
+		),
+	).
+		WithArgs(10, 1).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "title", "assignee_id"}).AddRow(10, "Task", 20))
+
+	err := service.Delete(context.Background(), 10, testUserRoles, 10)
+
+	require.Error(t, err)
+	var serviceErr service_errors.ServiceError
+	require.ErrorAs(t, err, &serviceErr)
+	assert.Equal(t, service_errors.PermissionDenied, serviceErr.EndUserMessage)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestTaskService_Delete_DefaultUser_OwnTask(t *testing.T) {
+	service, mock, redisServer := testTaskService(t)
+
+	mock.ExpectQuery(
+		regexp.QuoteMeta(
+			`SELECT * FROM "tasks" WHERE (id = $1 AND deleted_by IS NULL) AND "tasks"."deleted_at" IS NULL ORDER BY "tasks"."id" LIMIT $2`,
+		),
+	).
+		WithArgs(10, 1).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "title", "assignee_id"}).AddRow(10, "Task", 10))
+	mock.ExpectBegin()
+	mock.ExpectExec(`UPDATE "tasks"`).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+	require.NoError(t, redisServer.Set("task:10", `{"id":10,"assignee_id":10}`))
+
+	err := service.Delete(context.Background(), 10, testUserRoles, 10)
+
+	require.NoError(t, err)
+	require.NoError(t, mock.ExpectationsWereMet())
+	assert.False(t, redisServer.Exists("task:10"))
+}
+
+func TestTaskService_GetByFilter_Admin_DefaultPagination(t *testing.T) {
 	service, mock, _ := testTaskService(t)
 
 	mock.ExpectQuery(
@@ -688,6 +950,8 @@ func TestTaskService_GetByFilter_DefaultPagination(t *testing.T) {
 
 	result, err := service.GetByFilter(
 		context.Background(),
+		testAdminUserID,
+		testAdminRoles,
 		&dto.TaskListRequest{
 			PaginationRequest: dto.PaginationRequest{
 				Page:     0,
@@ -720,7 +984,7 @@ func TestTaskService_GetByFilter_Pagination(t *testing.T) {
 		)
 
 	mock.ExpectQuery(
-		`SELECT \* FROM "tasks".* WHERE "tasks"."deleted_at" IS NULL ORDER BY created_at DESC.*LIMIT \$1 OFFSET \$2`,
+		`SELECT \* FROM "tasks" WHERE deleted_by IS NULL AND "tasks"."deleted_at" IS NULL ORDER BY created_at DESC.*LIMIT \$1 OFFSET \$2`,
 	).
 		WithArgs(20, 20).
 		WillReturnRows(
@@ -735,6 +999,8 @@ func TestTaskService_GetByFilter_Pagination(t *testing.T) {
 
 	result, err := service.GetByFilter(
 		context.Background(),
+		testAdminUserID,
+		testAdminRoles,
 		&dto.TaskListRequest{
 			PaginationRequest: dto.PaginationRequest{
 				Page:     2,
@@ -759,7 +1025,9 @@ func TestTaskService_GetByFilter_StatusFilter(t *testing.T) {
 	status := models.TaskStatusCompleted
 
 	mock.ExpectQuery(
-		`SELECT count\(\*\) FROM "tasks" WHERE status = \$1`,
+		regexp.QuoteMeta(
+			`SELECT count(*) FROM "tasks" WHERE deleted_by IS NULL AND status = $1 AND "tasks"."deleted_at" IS NULL`,
+		),
 	).
 		WithArgs(status).
 		WillReturnRows(
@@ -768,7 +1036,9 @@ func TestTaskService_GetByFilter_StatusFilter(t *testing.T) {
 		)
 
 	mock.ExpectQuery(
-		`SELECT \* FROM "tasks" WHERE status = \$1 AND "tasks"."deleted_at" IS NULL ORDER BY created_at DESC`,
+		regexp.QuoteMeta(
+			`SELECT * FROM "tasks" WHERE deleted_by IS NULL AND status = $1 AND "tasks"."deleted_at" IS NULL`,
+		),
 	).
 		WithArgs(status, 20).
 		WillReturnRows(
@@ -783,6 +1053,8 @@ func TestTaskService_GetByFilter_StatusFilter(t *testing.T) {
 
 	result, err := service.GetByFilter(
 		context.Background(),
+		testAdminUserID,
+		testAdminRoles,
 		&dto.TaskListRequest{
 			Status: &status,
 		},
@@ -796,22 +1068,25 @@ func TestTaskService_GetByFilter_StatusFilter(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
-func TestTaskService_GetByFilter_AssigneeFilter(t *testing.T) {
+func TestTaskService_GetByFilter_Admin_AssigneeFilter(t *testing.T) {
 	service, mock, _ := testTaskService(t)
 
 	assigneeID := 5
 
 	mock.ExpectQuery(
-		`SELECT count\(\*\) FROM "tasks" WHERE assignee_id = \$1`,
+		regexp.QuoteMeta(
+			`SELECT count(*) FROM "tasks" WHERE deleted_by IS NULL AND assignee_id = $1 AND "tasks"."deleted_at" IS NULL`,
+		),
 	).
 		WithArgs(assigneeID).
 		WillReturnRows(
 			sqlmock.NewRows([]string{"count"}).
 				AddRow(4),
 		)
-
 	mock.ExpectQuery(
-		`SELECT \* FROM "tasks" WHERE assignee_id = \$1 AND "tasks"."deleted_at" IS NULL ORDER BY created_at DESC`,
+		regexp.QuoteMeta(
+			`SELECT * FROM "tasks" WHERE deleted_by IS NULL AND assignee_id = $1 AND "tasks"."deleted_at" IS NULL`,
+		),
 	).
 		WithArgs(assigneeID, 20).
 		WillReturnRows(
@@ -826,6 +1101,8 @@ func TestTaskService_GetByFilter_AssigneeFilter(t *testing.T) {
 
 	result, err := service.GetByFilter(
 		context.Background(),
+		testAdminUserID,
+		testAdminRoles,
 		&dto.TaskListRequest{
 			AssigneeID: &assigneeID,
 		},
@@ -834,6 +1111,25 @@ func TestTaskService_GetByFilter_AssigneeFilter(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, int64(4), result.Total)
 
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestTaskService_GetByFilter_DefaultUser_AssigneeFilter_Failure(t *testing.T) {
+	service, mock, _ := testTaskService(t)
+
+	assigneeID := 5
+
+	result, err := service.GetByFilter(
+		context.Background(),
+		testAdminUserID,
+		testUserRoles,
+		&dto.TaskListRequest{
+			AssigneeID: &assigneeID,
+		},
+	)
+
+	require.Error(t, err)
+	assert.Nil(t, result)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
@@ -849,6 +1145,8 @@ func TestTaskService_GetByFilter_CountError(t *testing.T) {
 
 	result, err := service.GetByFilter(
 		context.Background(),
+		testAdminUserID,
+		testUserRoles,
 		&dto.TaskListRequest{},
 	)
 
@@ -879,6 +1177,8 @@ func TestTaskService_GetByFilter_FindError(t *testing.T) {
 
 	result, err := service.GetByFilter(
 		context.Background(),
+		testAdminUserID,
+		testUserRoles,
 		&dto.TaskListRequest{},
 	)
 

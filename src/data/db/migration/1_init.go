@@ -1,6 +1,7 @@
 package migrations
 
 import (
+	"github.com/bytedance/gopkg/util/logger"
 	"github.com/mahdipeydai/taskmanager-go/config"
 	"github.com/mahdipeydai/taskmanager-go/constants"
 	"github.com/mahdipeydai/taskmanager-go/data/db"
@@ -10,10 +11,7 @@ import (
 	"gorm.io/gorm"
 )
 
-var logger = logging.GetLogger(config.GetConfig())
-
-func UpInit() {
-	cfg := config.GetConfig()
+func UpInit(cfg *config.Config, logger logging.LoggerInterface) {
 	logger.Info(logging.Postgres, logging.Migration, "Migration started ...", nil)
 
 	database := db.GetDB()

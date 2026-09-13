@@ -7,5 +7,5 @@ import (
 
 func HealthRouter(gr *gin.RouterGroup) {
 	handler := handlers.NewHealthHandler()
-	gr.GET("/", handler.Health)
+	gr.GET("", handler.Health)
 }

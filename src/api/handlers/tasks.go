@@ -20,9 +20,7 @@ type TasksHandler struct {
 	taskService *services.TaskService
 }
 
-func GetTasksHandler(cfg *config.Config) *TasksHandler {
-	logger := logging.GetLogger(cfg)
-
+func GetTasksHandler(cfg *config.Config, logger logging.LoggerInterface) *TasksHandler {
 	return &TasksHandler{
 		taskService: services.GetTaskService(db.GetDB(), cache.GetRedis(), cfg, logger),
 		cfg:         cfg,

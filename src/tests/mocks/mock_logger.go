@@ -2,9 +2,12 @@ package mocks
 
 import (
 	"github.com/mahdipeydai/taskmanager-go/pkg/logging"
+	"github.com/stretchr/testify/mock"
 )
 
-type MockLogger struct{}
+type MockLogger struct {
+	mock.Mock
+}
 
 var _ logging.LoggerInterface = (*MockLogger)(nil)
 

@@ -17,8 +17,7 @@ type UsersHandler struct {
 	userService *services.UsersService
 }
 
-func GetUsersHandler(cfg *config.Config) *UsersHandler {
-	logger := logging.GetLogger(cfg)
+func GetUsersHandler(cfg *config.Config, logger logging.LoggerInterface) *UsersHandler {
 	return &UsersHandler{
 		userService: services.GetUsersService(db.GetDB(), cfg, logger),
 		cfg:         cfg,

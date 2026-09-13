@@ -67,7 +67,7 @@ func LogRequestResponse(logger logging.LoggerInterface) gin.HandlerFunc {
 			extras[logging.Method] = c.Request.Method
 			extras[logging.StatusCode] = c.Writer.Status()
 			extras[logging.ErrorMessage] = c.Errors.ByType(gin.ErrorTypeAny).String()
-			extras[logging.ResponseBody] = string(bodyBytes)
+			extras[logging.RequestBody] = string(bodyBytes)
 			extras[logging.ResponseBody] = blw.body.String()
 			extras[logging.BodySize] = c.Writer.Size()
 			extras[logging.Latency] = latency

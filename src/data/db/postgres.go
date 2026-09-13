@@ -11,11 +11,9 @@ import (
 	"gorm.io/plugin/opentelemetry/tracing"
 )
 
-var logger = logging.GetLogger(config.GetConfig())
-
 var dbClient *gorm.DB
 
-func InitDb(cfg *config.Config) error {
+func InitDb(cfg *config.Config, logger logging.LoggerInterface) error {
 	cnn := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
 		cfg.Postgres.Host,
 		cfg.Postgres.Port,
@@ -52,7 +50,7 @@ func GetDB() *gorm.DB {
 	return dbClient
 }
 
-func CloseDb() {
+func CloseDb(logger logging.LoggerInterface) {
 	conn, _ := dbClient.DB()
 	err := conn.Close()
 	if err != nil {

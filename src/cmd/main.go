@@ -32,11 +32,11 @@ func main() {
 	}
 	defer shutdownTracing(context.Background())
 
-	err = db.InitDb(cfg)
+	err = db.InitDb(cfg, logger)
 	if err != nil {
 		logger.Fatal(logging.Postgres, logging.StartUp, err.Error(), nil)
 	}
-	defer db.CloseDb()
+	defer db.CloseDb(logger)
 	migration.UpInit()
 
 	err = cache.InitRedis(cfg)
@@ -46,5 +46,5 @@ func main() {
 	defer cache.CloseRedis(cfg)
 
 	logger.Info(logging.Internal, logging.StartUp, "Setting up GIN server", nil)
-	api.InitServer(cfg)
+	api.InitServer(cfg, logger)
 }

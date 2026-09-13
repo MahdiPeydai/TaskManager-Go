@@ -14,8 +14,7 @@ import (
 	"github.com/mahdipeydai/taskmanager-go/services"
 )
 
-func Authentication(cfg *config.Config) gin.HandlerFunc {
-	logger := logging.GetLogger(cfg)
+func Authentication(cfg *config.Config, logger logging.LoggerInterface) gin.HandlerFunc {
 	tokenService := services.GetTokenService(cfg, logger)
 
 	return func(c *gin.Context) {

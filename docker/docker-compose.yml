@@ -38,12 +38,33 @@ services:
     networks:
       - graph-taskmanager-network
 
+  ###################### APP #######################
+  taskmanager-api:
+    build: ../src/
+    image: taskmanager-api:latest
+    container_name: taskmanager-api
+    environment:
+      - PORT=${PORT:-9001}
+    ports:
+      - "${PORT:-9001}:5000"
+    networks:
+      - graph-taskmanager-network
+    volumes:
+      - logs:/app/logs
+    depends_on:
+      - postgres
+      - redis
+      - jaeger
+    restart: unless-stopped
+
 ####################### VOLUME AND NETWORKS #######################
 volumes:
   postgres:
     name: graph-taskmanager-postgres-data
   redis:
     name: graph-taskmanager-redis-data
+  logs:
+    name: graph-taskmanager-logs-data
 
 networks:
   graph-taskmanager-network:

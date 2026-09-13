@@ -21,13 +21,13 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 )
 
-func InitServer(cfg *config.Config) {
+func InitServer(cfg *config.Config, logger logging.LoggerInterface) {
 	engin := gin.New()
-	registerCustomValidators(cfg)
+	registerCustomValidators(cfg, logger)
 	engin.Use(gin.Logger(), gin.CustomRecovery(middlewares.ErrorHandler))
 
-	registerMiddlewares(engin, cfg)
-	registerRoutes(engin, cfg)
+	registerMiddlewares(engin, cfg, logger)
+	registerRoutes(engin, cfg, logger)
 	registerSwagger(engin, cfg)
 	registerPrometheus(engin)
 
@@ -37,17 +37,17 @@ func InitServer(cfg *config.Config) {
 	}
 }
 
-func registerMiddlewares(g *gin.Engine, cfg *config.Config) {
+func registerMiddlewares(g *gin.Engine, cfg *config.Config, logger logging.LoggerInterface) {
 	g.Use(
 		otelgin.Middleware(cfg.Jaeger.App),
 		middlewares.Prometheus(),
-		middlewares.LogRequestResponse(logging.GetLogger(cfg)),
+		middlewares.LogRequestResponse(logger),
 		middlewares.Cors(cfg.Server.AllowOrigins),
 		middlewares.LimitByRequest(float64(cfg.Server.RateLimit)),
 	)
 }
 
-func registerRoutes(g *gin.Engine, cfg *config.Config) {
+func registerRoutes(g *gin.Engine, cfg *config.Config, logger logging.LoggerInterface) {
 	apiGroup := g.Group("/api")
 	v1Group := apiGroup.Group("/v1")
 
@@ -56,10 +56,10 @@ func registerRoutes(g *gin.Engine, cfg *config.Config) {
 		routers.HealthRouter(healthRouterGroup)
 
 		usersRouterGroup := v1Group.Group("/users")
-		routers.UsersRouter(usersRouterGroup, cfg)
+		routers.UsersRouter(usersRouterGroup, cfg, logger)
 
 		tasksRouterGroup := v1Group.Group("/tasks")
-		routers.TasksRouter(tasksRouterGroup, cfg)
+		routers.TasksRouter(tasksRouterGroup, cfg, logger)
 	}
 
 }
@@ -73,7 +73,7 @@ func registerSwagger(g *gin.Engine, cfg *config.Config) {
 	g.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 }
 
-func registerCustomValidators(cfg *config.Config) {
+func registerCustomValidators(cfg *config.Config, logger logging.LoggerInterface) {
 	val, ok := binding.Validator.Engine().(*validator.Validate)
 	if ok {
 		err := val.RegisterValidation("userPassword", validators.UserPasswordValidator(cfg), true)
